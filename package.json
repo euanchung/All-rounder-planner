@@ -1,0 +1,14 @@
+{
+  "name": "byeonsaeng-radar",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "공지 변경을 과제와 학습 계획에 연결하는 변생 레이더",
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check src/app.js && node --check src/engine.js"
+  },
+  "engines": { "node": ">=22" }
+}
