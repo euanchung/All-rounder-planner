@@ -1,4 +1,5 @@
 import {validProfile} from './profile.js';
+import {remainingMinutes,taskMetrics,validStudyFields,dailyCapacity} from './workload.js';
 // Deterministic, offline Korean notice analysis. No trained model or external AI API.
 export const FIELDS = {due:'마감일',time:'시각',subject:'과목',amount:'분량',format:'제출 방식',place:'장소',materials:'준비물',cost:'비용',audience:'대상'};
 export const iso = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -75,13 +76,13 @@ export function compare(oldAnalysis,newAnalysis) {
   });
 }
 export function plan(tasks, capacity, start=today(), horizon=14) {
-  const days=Array.from({length:horizon},(_,i)=>{const date=addDays(start,i);return {date,capacity:Math.max(0,Number(Array.isArray(capacity)?capacity[new Date(date+'T12:00:00').getDay()]:capacity)||0),used:0,items:[]};});
+  const days=Array.from({length:horizon},(_,i)=>{const date=addDays(start,i);return {date,capacity:dailyCapacity(capacity,date),used:0,items:[]};});
   const missing=[], overflow=[];
   const active=tasks.filter(t=>!t.done);
   const sorted=active.filter(t=>validDate(t.fields.due)).sort((a,b)=>a.fields.due.localeCompare(b.fields.due)||b.priority-a.priority);
   missing.push(...active.filter(t=>!validDate(t.fields.due)).map(t=>t.id));
   for(const task of sorted) {
-    let remaining=Math.max(0,Number(task.minutes)||0);
+    let remaining=remainingMinutes(task);
     if(task.fields.due<start){overflow.push({id:task.id,minutes:remaining,reason:'마감 지남'});continue;}
     if(task.fields.due>days.at(-1).date) continue;
     // Reserve the earliest deadline first; place its sessions backwards from the deadline.
@@ -92,6 +93,7 @@ export function plan(tasks, capacity, start=today(), horizon=14) {
     }
     if(remaining>0)overflow.push({id:task.id,minutes:remaining,reason:'가용 시간 부족'});
   }
+  for(const day of days)day.items.sort((a,b)=>taskMetrics(tasks.find(t=>t.id===b.id),capacity,start).score-taskMetrics(tasks.find(t=>t.id===a.id),capacity,start).score);
   return {days,overflow,missing,totalShortage:overflow.reduce((n,x)=>n+x.minutes,0)};
 }
 export function validateBackup(data) {
@@ -101,6 +103,7 @@ export function validateBackup(data) {
   const ids=new Set();
   return data.tasks.every(t=>{
     if(!t||typeof t.id!=='string'||ids.has(t.id))return false; ids.add(t.id);
+    if(!validStudyFields(t))return false;
     return typeof t.title==='string'&&t.title.length>0&&t.title.length<=200&&typeof t.source==='string'&&t.source.length<=12000&&validDate(t.sourceDate)&&t.fields&&Object.keys(FIELDS).every(k=>t.fields[k]===null||typeof t.fields[k]==='string'&&t.fields[k].length<=1000)&&(!t.fields.due||validDate(t.fields.due))&&Number.isFinite(t.minutes)&&t.minutes>=0&&t.minutes<=10080&&[1,2,3].includes(t.priority)&&typeof t.done==='boolean'&&Array.isArray(t.history)&&t.history.length<=100&&t.history.every(h=>h&&typeof h.source==='string'&&h.source.length<=12000&&validDate(h.sourceDate)&&typeof h.at==='string');
   });
 }
