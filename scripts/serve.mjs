@@ -4,7 +4,7 @@ import { resolve, extname, sep } from 'node:path';
 import {loadEnvFile} from 'node:process';
 try{loadEnvFile('.env.local');}catch{}
 const root = resolve('dist');
-const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
+const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.webmanifest':'application/manifest+json'};
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
