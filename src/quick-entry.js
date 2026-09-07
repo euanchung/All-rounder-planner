@@ -1,16 +1,17 @@
+import {inferCategory} from './task-kind.js';
 import {analyze,today,validDate} from './engine.js';
 import {resizeProblems} from './workload.js';
-export const CATEGORIES={study:'공부·과제',bring:'준비물',buy:'구매',other:'일상'};
+export const CATEGORIES={study:'공부',assignment:'과제',bring:'준비물',buy:'구매',other:'일상'};
 const durationPattern=/(?<!\d)(?:(-?\d+(?:\.\d+)?)\s*시간(?:\s*(반|\d+\s*분))?|(-?\d+)\s*분)(?!\s*까지)/g;
 export function parseQuick(text,base=today()){
  const source=text.trim(),durations=[];
  const withoutDuration=source.replace(durationPattern,(raw,h,tail,m,offset)=>{if(m&&/\d{1,2}시\s*$/.test(source.slice(0,offset)))return raw;durations.push(h?Number(h)*60+(tail==='반'?30:parseInt(tail||'0')):Number(m));return ' ';});
  const a=analyze(withoutDuration,base),fields={...a.fields};
- const category=/구매(?:하기|할|해야|하자)?|구입|(?:^|\s)(?:사기|사오기)(?:\s|$|[.!])/u.test(source)?'buy':/챙기|챙겨|가져오|가져가|준비물/.test(source)?'bring':fields.subject||/과제|숙제|보고서|문제|수행|공부|제출|시험/.test(source)?'study':'other';
+ const category=inferCategory(source.split('\n')[0],fields.subject);
  let title=withoutDuration.split('\n')[0].replace(/(?:20\d{2}[-./년\s]+)?\d{1,2}(?:월|[/.])\s*\d{1,2}일?(?:까지)?/g,' ').replace(/(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]요일(?:까지)?|오늘(?:까지)?|내일(?:까지)?|모레(?:까지)?/g,' ').replace(/(?:오전|오후)?\s*\d{1,2}(?::\d{2}|시(?!간)(?:\s*\d{1,2}분)?)(?:까지)?/g,' ').replace(/^\s*[-•·*]\s*|^\s*\d+[.)]\s*/,'').replace(/\s+/g,' ').trim();
  title=(title||source).slice(0,200);
  if(category==='bring'&&!fields.materials){const item=title.replace(/(?:을|를)?\s*(?:챙기기|챙겨오기|챙겨가기|챙겨오세요|챙겨|가져오기|가져가기|가져오세요|가져와야|챙겨야).*$/,'').trim();if(item)fields.materials=item;}
- const unique=[...new Set(durations)],minutes=unique.length===1?unique[0]:category==='study'?30:10;
+ const unique=[...new Set(durations)],minutes=unique.length===1?unique[0]:['study','assignment'].includes(category)?30:10;
  const warnings=[...a.issues];
  if(unique.length>1)warnings.push('작업 시간이 여러 개여서 기본 시간을 넣었어요. 수정해 주세요.');
  if(!Number.isInteger(minutes)||minutes<1||minutes>10080)warnings.push('작업 시간은 1~10080분 사이 정수여야 해요.');
@@ -36,6 +37,6 @@ export function parseBatch(text,base=today()){
 }
 export function createQuickTask(parsed,id){
  if(!parsed.title.trim()||parsed.title.length>200||!Number.isInteger(parsed.totalMinutes)||parsed.totalMinutes<1||parsed.totalMinutes>10080||!Object.hasOwn(CATEGORIES,parsed.category)||parsed.fields.due&&!validDate(parsed.fields.due))throw new Error('제목·날짜·작업 시간을 확인해 주세요.');
- return {id,title:parsed.title.trim(),source:parsed.source,sourceDate:parsed.sourceDate,fields:parsed.fields,minutes:parsed.totalMinutes,totalMinutes:parsed.totalMinutes,completedMinutes:0,priority:2,difficulty:3,category:parsed.category,note:'',minutesEstimated:parsed.minutesEstimated,done:false,history:[],problems:resizeProblems([],parsed.problemCount),studyLog:[]};
+ return {id,title:parsed.title.trim(),source:parsed.source,sourceDate:parsed.sourceDate,fields:parsed.fields,minutes:parsed.totalMinutes,totalMinutes:parsed.totalMinutes,completedMinutes:0,priority:2,difficulty:3,category:parsed.category,kindVersion:1,note:'',minutesEstimated:parsed.minutesEstimated,done:false,history:[],problems:resizeProblems([],parsed.problemCount),studyLog:[]};
 }
 export function duplicateKey(t){return [t.title.replace(/\s/g,'').toLowerCase(),t.fields.due||'',t.category||'study'].join('|');}

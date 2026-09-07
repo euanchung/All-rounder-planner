@@ -4,7 +4,7 @@ export function calendarFile(tasks,now=new Date()){
  const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Meta Timetable//KO','CALSCALE:GREGORIAN'];
  for(const t of tasks.filter(t=>!t.done&&t.fields.due)){
   const date=t.fields.due.replaceAll('-',''),time=(t.fields.time||'09:00').replace(':','')+'00';
-  lines.push('BEGIN:VEVENT','UID:'+esc(t.id)+'@meta-timetable','DTSTAMP:'+now.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z'),'DTSTART:'+date+'T'+time,'SUMMARY:'+esc(t.title),'DESCRIPTION:'+esc('메타시간표 마감 알림. 시각이 없던 할 일은 오전 9시로 내보냈습니다. 앱 수정 내용은 자동 동기화되지 않습니다.'),'BEGIN:VALARM','TRIGGER:-PT30M','ACTION:DISPLAY','DESCRIPTION:할 일 마감 30분 전','END:VALARM','END:VEVENT');
+  lines.push('BEGIN:VEVENT','UID:'+esc(t.id)+'@meta-timetable','DTSTAMP:'+now.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z'),'DTSTART:'+date+'T'+time,'SUMMARY:'+esc(t.title),'DESCRIPTION:'+esc('메타시간표 마감 알림. 시각이 없던 할일은 오전 9시로 내보냈습니다. 앱 수정 내용은 자동 동기화되지 않습니다.'),'BEGIN:VALARM','TRIGGER:-PT30M','ACTION:DISPLAY','DESCRIPTION:할일 마감 30분 전','END:VALARM','END:VEVENT');
  }
  lines.push('END:VCALENDAR');return lines.map(fold).join('\r\n')+'\r\n';
 }

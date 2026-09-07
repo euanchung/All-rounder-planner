@@ -57,13 +57,6 @@ export async function authAction(action,values){
   values={...values,...(values.email?{email:values.email.trim().toLowerCase()}:{})};
   if(action==='login')result=await auth.signIn.email({email:values.email,password:values.password});
   if(action==='signup')result=await auth.signUp.email({email:values.email,password:values.password,name:values.name});
-  if(action==='send-code'){
-    if(!cloud.user?.email)throw new Error('로그인한 이메일을 먼저 확인해 주세요.');
-    if(Date.now()-(cloud.lastCodeRequest||0)<60000)throw new Error('재발송은 1분 뒤에 해 주세요. 여러 번 요청하면 최신 번호만 사용해야 해요.');
-    result=await auth.emailOtp.sendVerificationOtp({email:cloud.user.email,type:'email-verification'});
-    if(!result?.error)cloud.lastCodeRequest=Date.now();
-  }
-  if(action==='verify')result=await auth.emailOtp.verifyEmail({email:cloud.user.email,otp:values.otp});
   if(action==='reset-code')result=await auth.emailOtp.requestPasswordReset({email:values.email});
   if(action==='reset-password')result=await auth.emailOtp.resetPassword({email:values.email,otp:values.otp,password:values.password});
   if(result?.error){console.warn('[auth]',{action,status:result.error.status,code:result.error.code});throw new Error(result.error.status===429?'요청이 많아 잠시 제한되었어요. 잠시 후 한 번만 다시 요청해 주세요.':result.error.message||'인증에 실패했습니다.');}

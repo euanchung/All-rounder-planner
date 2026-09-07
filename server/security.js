@@ -13,10 +13,8 @@ export async function identity(req){
   const sql=db();
   const [user]=await sql`SELECT id,email,name,"emailVerified" FROM neon_auth."user" WHERE id = ${payload.sub}`;
   if(!user)throw Object.assign(new Error('사용자 계정을 찾을 수 없습니다.'),{status:401});
-  const adminEmail=process.env.ADMIN_EMAIL?.trim().toLowerCase();
-  if(adminEmail&&user.emailVerified&&user.email.toLowerCase()===adminEmail){
-    await sql`INSERT INTO public.radar_admin (slot,user_id) VALUES (1,${user.id}) ON CONFLICT (slot) DO NOTHING`;
-  }
+  // Administrator is provisioned once by the owner and bound to an immutable user ID.
+  // Never promote a newly registered account merely because its email matches.
   const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE slot=1 AND user_id=${user.id}`;
   return {id:user.id,email:user.email,name:user.name,emailVerified:user.emailVerified,role:admin?'admin':'member'};
 }

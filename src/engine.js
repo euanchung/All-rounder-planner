@@ -1,5 +1,7 @@
+import {academic} from './task-kind.js';
+import {deadlineStamp} from './live-time.js';
 import {validProfile} from './profile.js';
-import {remainingMinutes,taskMetrics,validStudyFields,dailyCapacity} from './workload.js';
+import {remainingMinutes,taskMetrics,validStudyFields,dailyCapacity,capacityBeforeDeadline} from './workload.js';
 // Deterministic, offline Korean notice analysis. No trained model or external AI API.
 export const FIELDS = {due:'마감일',time:'시각',subject:'과목',amount:'분량',format:'제출 방식',place:'장소',materials:'준비물',cost:'비용',audience:'대상'};
 export const iso = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -78,31 +80,31 @@ export function compare(oldAnalysis,newAnalysis) {
 export function plan(tasks, capacity, start=today(), horizon=14) {
   const days=Array.from({length:horizon},(_,i)=>{const date=addDays(start,i);return {date,capacity:dailyCapacity(capacity,date),used:0,items:[]};});
   const missing=[],overflow=[],conflicts=[],reserved=new Map();
-  const active=tasks.filter(t=>!t.done);
-  const sorted=active.filter(t=>validDate(t.fields.due)).sort((a,b)=>a.fields.due.localeCompare(b.fields.due)||b.priority-a.priority);
+  const active=tasks.filter(t=>!t.done&&academic(t));
+  const sorted=active.filter(t=>validDate(t.fields.due)).sort((a,b)=>deadlineStamp(a)-deadlineStamp(b)||b.priority-a.priority);
   missing.push(...active.filter(t=>!validDate(t.fields.due)).map(t=>t.id));
-  for(const task of active){
+  for(const task of sorted){
     let left=remainingMinutes(task);
     for(const slot of (task.planSlots||[]).slice().sort((a,b)=>a.date.localeCompare(b.date))){
       if(slot.date<start)continue;
       if(!validDate(task.fields.due)||slot.date>task.fields.due){conflicts.push({id:task.id,date:slot.date,reason:'마감일을 벗어난 직접 계획'});continue;}
       const day=days.find(d=>d.date===slot.date);if(!day)continue;
-      const n=Math.min(slot.minutes,left,Math.max(0,day.capacity-day.used));
+      const n=Math.min(slot.minutes,left,Math.max(0,capacityBeforeDeadline(capacity,day.date,task)-day.used));
       if(n){day.used+=n;day.items.push({id:task.id,title:task.title,minutes:n,manual:true});left-=n;reserved.set(task.id,(reserved.get(task.id)||0)+n);}
-      if(n<slot.minutes)conflicts.push({id:task.id,date:slot.date,reason:'직접 계획이 남은 작업량 또는 그날 가용 시간을 초과함'});
+      if(n<slot.minutes)conflicts.push({id:task.id,date:slot.date,reason:'직접 계획이 남은 시간 또는 그날 일일 시간을 초과함'});
     }
   }
   for(const task of sorted){
     let remaining=remainingMinutes(task)-(reserved.get(task.id)||0);
-    if(task.fields.due<start){if(remaining)overflow.push({id:task.id,minutes:remaining,reason:'마감 지남'});continue;}
+    if(task.fields.due<start||capacity?.now!==undefined&&deadlineStamp(task)<=capacity.now){if(remaining)overflow.push({id:task.id,minutes:remaining,reason:'마감 지남'});continue;}
     if(task.fields.due>days.at(-1).date)continue;
     // User pins reserve time first. Unpinned work still reserves earlier deadlines first.
     for(let i=days.length-1;i>=0&&remaining>0;i--){
       const day=days[i];if(day.date>task.fields.due)continue;
-      const minutes=Math.min(remaining,Math.max(0,day.capacity-day.used));
+      const minutes=Math.min(remaining,Math.max(0,capacityBeforeDeadline(capacity,day.date,task)-day.used));
       if(minutes){day.used+=minutes;day.items.push({id:task.id,title:task.title,minutes});remaining-=minutes;}
     }
-    if(remaining>0)overflow.push({id:task.id,minutes:remaining,reason:'가용 시간 부족'});
+    if(remaining>0)overflow.push({id:task.id,minutes:remaining,reason:'일일 시간 부족'});
   }
   for(const day of days)day.items.sort((a,b)=>taskMetrics(tasks.find(t=>t.id===b.id),capacity,start).score-taskMetrics(tasks.find(t=>t.id===a.id),capacity,start).score);
   return {days,overflow,missing,conflicts,totalShortage:overflow.reduce((n,x)=>n+x.minutes,0)};
@@ -115,6 +117,6 @@ export function validateBackup(data) {
   return data.tasks.every(t=>{
     if(!t||typeof t.id!=='string'||ids.has(t.id))return false; ids.add(t.id);
     if(!validStudyFields(t))return false;
-    return typeof t.title==='string'&&t.title.length>0&&t.title.length<=200&&typeof t.source==='string'&&t.source.length<=12000&&validDate(t.sourceDate)&&t.fields&&Object.keys(FIELDS).every(k=>t.fields[k]===null||typeof t.fields[k]==='string'&&t.fields[k].length<=1000)&&(!t.fields.due||validDate(t.fields.due))&&Number.isFinite(t.minutes)&&t.minutes>=0&&t.minutes<=10080&&[1,2,3].includes(t.priority)&&typeof t.done==='boolean'&&Array.isArray(t.history)&&t.history.length<=100&&t.history.every(h=>h&&typeof h.source==='string'&&h.source.length<=12000&&validDate(h.sourceDate)&&typeof h.at==='string');
+    return typeof t.title==='string'&&t.title.length>0&&t.title.length<=200&&typeof t.source==='string'&&t.source.length<=12000&&validDate(t.sourceDate)&&t.fields&&Object.keys(FIELDS).every(k=>t.fields[k]===null||typeof t.fields[k]==='string'&&t.fields[k].length<=1000)&&(!t.fields.due||validDate(t.fields.due))&&(!t.fields.time||/^([01]\d|2[0-3]):[0-5]\d$/.test(t.fields.time))&&Number.isFinite(t.minutes)&&t.minutes>=0&&t.minutes<=10080&&[1,2,3].includes(t.priority)&&typeof t.done==='boolean'&&Array.isArray(t.history)&&t.history.length<=100&&t.history.every(h=>h&&typeof h.source==='string'&&h.source.length<=12000&&validDate(h.sourceDate)&&typeof h.at==='string');
   });
 }
