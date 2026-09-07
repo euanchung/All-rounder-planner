@@ -1,3 +1,4 @@
+import {validProfile} from './profile.js';
 // Deterministic, offline Korean notice analysis. No trained model or external AI API.
 export const FIELDS = {due:'마감일',time:'시각',subject:'과목',amount:'분량',format:'제출 방식',place:'장소',materials:'준비물',cost:'비용',audience:'대상'};
 export const iso = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -74,7 +75,7 @@ export function compare(oldAnalysis,newAnalysis) {
   });
 }
 export function plan(tasks, capacity, start=today(), horizon=14) {
-  const days=Array.from({length:horizon},(_,i)=>({date:addDays(start,i),capacity:Math.max(0,Number(capacity)||0),used:0,items:[]}));
+  const days=Array.from({length:horizon},(_,i)=>{const date=addDays(start,i);return {date,capacity:Math.max(0,Number(Array.isArray(capacity)?capacity[new Date(date+'T12:00:00').getDay()]:capacity)||0),used:0,items:[]};});
   const missing=[], overflow=[];
   const active=tasks.filter(t=>!t.done);
   const sorted=active.filter(t=>validDate(t.fields.due)).sort((a,b)=>a.fields.due.localeCompare(b.fields.due)||b.priority-a.priority);
@@ -94,7 +95,8 @@ export function plan(tasks, capacity, start=today(), horizon=14) {
   return {days,overflow,missing,totalShortage:overflow.reduce((n,x)=>n+x.minutes,0)};
 }
 export function validateBackup(data) {
-  if(!data||data.version!==1||!Array.isArray(data.tasks)||data.tasks.length>300) return false;
+  if(!data||![1,2].includes(data.version)||!Array.isArray(data.tasks)||data.tasks.length>300) return false;
+  if(data.version===2&&!validProfile(data.profile))return false;
   if(!Number.isFinite(data.capacity)||data.capacity<15||data.capacity>720)return false;
   const ids=new Set();
   return data.tasks.every(t=>{
