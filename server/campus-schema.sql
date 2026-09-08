@@ -41,6 +41,19 @@ CREATE TABLE IF NOT EXISTS public.campus_accounts (user_id text PRIMARY KEY, req
 CREATE TABLE IF NOT EXISTS public.campus_site (id integer PRIMARY KEY CHECK(id=1), sharing_enabled boolean NOT NULL DEFAULT true, notices_enabled boolean NOT NULL DEFAULT true, announcement text NOT NULL DEFAULT '');
 INSERT INTO public.campus_site(id) VALUES(1) ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS public.campus_audit (id uuid PRIMARY KEY, actor_id text NOT NULL, target_id text, action text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS public.campus_schools (school text PRIMARY KEY, payload jsonb NOT NULL, owner_id text NOT NULL, revision integer NOT NULL DEFAULT 1, updated_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE IF NOT EXISTS public.campus_school_tables (school text NOT NULL, grade text NOT NULL, class_name text NOT NULL, week date NOT NULL, payload jsonb NOT NULL, owner_id text NOT NULL, revision integer NOT NULL DEFAULT 1, PRIMARY KEY(school,grade,class_name,week));
+CREATE TABLE IF NOT EXISTS public.campus_reads (user_id text NOT NULL, room_id uuid NOT NULL REFERENCES public.campus_rooms(id) ON DELETE CASCADE, read_at timestamptz NOT NULL, PRIMARY KEY(user_id,room_id));
+ALTER TABLE public.campus_messages ADD COLUMN IF NOT EXISTS client_id uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS campus_message_idempotency ON public.campus_messages(sender_id,client_id) WHERE client_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS public.campus_push (endpoint text PRIMARY KEY,user_id text NOT NULL,subscription jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS public.campus_school_classes (
+ school text NOT NULL, grade text NOT NULL, class_name text NOT NULL, owner_id text NOT NULL,
+ PRIMARY KEY(school,grade,class_name)
+);
+INSERT INTO public.campus_school_classes(school,grade,class_name,owner_id)
+ SELECT DISTINCT ON (school,grade,class_name) school,grade,class_name,owner_id FROM public.campus_school_tables
+ ORDER BY school,grade,class_name,week ON CONFLICT DO NOTHING;
 CREATE OR REPLACE FUNCTION public.campus_tutor_reserve(who text, day_key text)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE keys text[] := ARRAY['tutor:month:'||left(day_key,7),'tutor:site:'||day_key,'tutor:user:'||who||':'||day_key];

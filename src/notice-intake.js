@@ -6,7 +6,7 @@ const dateToken='(?:20\\d{2}[-./년\\s]+)?\\d{1,2}(?:월|[/.])\\s*\\d{1,2}일?|�
 export function finalNoticeText(text) {
   return normalizeLanguage(text).replace(new RegExp('('+dateToken+')\\s*(?:에서|→|->|(?:이|가)?\\s*아니라)\\s*('+dateToken+')','g'), '$2');
 }
-function blocks(text, base) {
+function blocks(text, base,subjects) {
   const result=[]; let heading='';
   for(const raw of text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean)) {
     if (/^\[[^\]]+\]\s*\[(?:오전|오후)?\s*\d/.test(raw) || /^[-=]{3,}/.test(raw)) continue;
@@ -15,29 +15,30 @@ function blocks(text, base) {
     if(new RegExp('^(?:'+dateToken+')(?:까지)?(?:\\s*(?:할\\s*일|과제|공지|숙제|준비물)(?:\\s*(?:정리|목록))?)?$').test(header)){heading=header.replace(/\s*(?:할\s*일|과제|공지|숙제|준비물).*$/,'');continue;}
     if (/^(?:공지|할\s*일|과제|숙제)(?:\s*(?:정리|목록))?\s*[:：]?$/.test(line)) continue;
     if (/^(?:오늘|내일|모레|[월화수목금토일]요일)(?:까지)?\s*(?:할\s*일|과제|공지|숙제)\s*[:：]?$/.test(line)) {heading=line.replace(/\s*(?:할\s*일|과제|공지|숙제).*$/,'');continue;}
-    const p=parseQuick(finalNoticeText(line),base);
+    const p=parseQuick(finalNoticeText(line),base,subjects);
     const continuation=/^(?:마감|기한|제출일|준비물|장소|비용|참가비|제출 방식|제출 방법|평가 기준|대상)\s*[:：]/.test(line)|| !p.fields.subject && !['buy','bring'].includes(p.category) && !/보고서|숙제|과제|공부|복습|예습|발표|챙기|가져오|구매|문제/.test(p.title);
     if(result.length && continuation) result[result.length-1]+='\n'+line;
     else result.push((!p.fields.due && heading ? heading+' ' : '')+line);
   }
   return result;
 }
-const tokens=text=>matchWords(parseQuick(text).title);
+const tokens=text=>matchWords(text.replace(/\d+\s*분\s*$/g,' '));
 function similarity(parsed, task) {
   if(parsed.fields.subject && task.fields.subject && parsed.fields.subject!==task.fields.subject) return 0;
   if(taskCategory(task)!==parsed.category) return 0;
-  const a=tokens(parsed.title), b=tokens(task.title);
+  if(parsed.taskType&&task.taskType&&parsed.taskType!==task.taskType)return 0;
+  const a=tokens(parsed.source||parsed.title), b=tokens(task.source||task.title);
   if(!a.size || !b.size) return 0;
   const same=[...a].filter(w=>b.has(w)).length;
   // A subject name alone cannot identify a particular assignment.
   if(same===1 && [...a].filter(w=>b.has(w))[0]===parsed.fields.subject) return 0;
   return same / Math.max(a.size,b.size);
 }
-export function inspectNotice(text,tasks,base=today()) {
+export function inspectNotice(text,tasks,base=today(),subjects=[]) {
   if(!text.trim()||text.length>12000) throw new Error('공지를 1~12,000자로 붙여 넣어 주세요.');
-  const parts=blocks(text.replace(/;\s*(?=(?:물리|화학|수학|국어|영어|생명|과학))/g,'\n'),base);if(parts.length>100)throw new Error('한 번에 100개까지 분석할 수 있어요.');
+  const parts=blocks(text.replace(/;\s*(?=(?:물리|화학|수학|국어|영어|생명|과학))/g,'\n'),base,subjects);if(parts.length>100)throw new Error('한 번에 100개까지 분석할 수 있어요.');
   return parts.map(source=>{
-    const cleaned=finalNoticeText(source), parsed={...parseQuick(cleaned,base),source};
+    const cleaned=finalNoticeText(source), parsed={...parseQuick(cleaned,base,subjects),source};
     const candidates=tasks.filter(t=>!t.done).map(t=>({id:t.id,title:t.title,score:similarity(parsed,t)})).filter(c=>c.score>=0.45).sort((a,b)=>b.score-a.score);
     const top=candidates[0], clear=top && top.score>=0.8 && (!candidates[1]||top.score-candidates[1].score>=0.2);
     const targetId=clear?top.id:null, old=tasks.find(t=>t.id===targetId);
@@ -56,7 +57,7 @@ export function applyNoticeRows(tasks, rows, idFactory, at=new Date().toISOStrin
     if(row.choice==='choose')throw new Error('비슷한 후보가 여러 개예요. 해당 항목만 선택해 주세요.');
     if(row.choice==='new') {
       const task=createQuickTask(row.parsed,idFactory());
-      if(result.some(t=>t.title===task.title&&t.fields.due===task.fields.due&&taskCategory(t)===taskCategory(task))){skipped++;continue;}
+      if(result.some(t=>t.title===task.title&&t.fields.due===task.fields.due&&taskCategory(t)===taskCategory(task)&&t.fields.subject===task.fields.subject&&t.taskType===task.taskType)){skipped++;continue;}
       result.push(task);added++;continue;
     }
     const i=result.findIndex(t=>t.id===row.targetId),old=tasks.find(t=>t.id===row.targetId);

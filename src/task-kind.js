@@ -8,7 +8,7 @@ export function inferCategory(text, subject) {
 }
 export function taskCategory(task) {
   if (task.category && (task.category !== 'study' || task.kindVersion === 1)) return task.category;
-  const inferred=inferCategory(task.title || (task.source || '').split('\n')[0], task.fields?.subject);
+  const inferred=inferCategory((task.source || '').split('\n')[0] || task.title, task.fields?.subject);
   return inferred==='other'?'assignment':inferred;
 }
 export const academic = task => ['study', 'assignment'].includes(taskCategory(task));

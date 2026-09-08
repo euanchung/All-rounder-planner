@@ -9,11 +9,11 @@ export const createAdminHandler=({getIdentity=identity,getDb=db}={})=>async func
  const sql=getDb(),url=new URL(req.url,'https://local.invalid');
  if(req.method==='GET'){
   const page=Math.floor(Math.max(0,Math.min(100000,Number(url.searchParams.get('page'))||0))),q=(url.searchParams.get('q')||'').trim().slice(0,100),search='%'+q+'%';
-  const [count]=await sql`SELECT count(*)::integer AS total FROM neon_auth."user" WHERE email ILIKE ${search} OR name ILIKE ${search}`;
+  const [count]=await sql`SELECT count(*)::integer AS total,count(*) FILTER(WHERE id::text NOT IN(SELECT user_id FROM public.radar_admin))::integer AS members FROM neon_auth."user" WHERE email ILIKE ${search} OR name ILIKE ${search}`;
   const users=await sql`SELECT u.id,u.email,u.name,u."createdAt" AS created_at,p.school,p.grade,p.class_name,p.teacher_status,COALESCE(a.requested_role,'student') AS requested_role,COALESCE(a.suspended,false) AS suspended,CASE WHEN adm.user_id IS NOT NULL THEN 'admin' WHEN p.teacher_status='approved' THEN 'teacher' WHEN m.role IN('leader','deputy') THEN m.role ELSE 'student' END AS role FROM neon_auth."user" u LEFT JOIN public.campus_people p ON p.user_id=u.id::text LEFT JOIN public.campus_accounts a ON a.user_id=u.id::text LEFT JOIN public.campus_members m ON m.user_id=u.id::text LEFT JOIN public.radar_admin adm ON adm.user_id=u.id::text WHERE u.email ILIKE ${search} OR u.name ILIKE ${search} ORDER BY u."createdAt" DESC,u.id LIMIT 50 OFFSET ${page*50}`;
   const reports=await sql`SELECT id,user_id,room_id,reason,created_at FROM public.campus_reports ORDER BY created_at DESC LIMIT 100`;
   const audit=await sql`SELECT action,target_id,created_at FROM public.campus_audit ORDER BY created_at DESC LIMIT 30`;
-  return respond(res,200,{users,total:count.total,page,site:await siteSettings(sql),reports,audit});
+  return respond(res,200,{users,total:count.total,memberTotal:count.members,page,site:await siteSettings(sql),reports,audit});
  }
  if(req.method!=='POST')return respond(res,405,{error:'Method not allowed'});
  const b=typeof req.body==='string'?JSON.parse(req.body):req.body;if(!b||JSON.stringify(b).length>10000)deny('요청을 확인하세요.');

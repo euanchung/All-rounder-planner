@@ -1,3 +1,4 @@
+import {manualTask} from './manual-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseQuick,createQuickTask} from '../src/quick-entry.js';
@@ -7,7 +8,7 @@ import {defaultProfile} from '../src/profile.js';
 import {defaultAppearance,defaultReminders,validAppearance,validReminders,contrastInk,scheduledReminderSlots} from '../src/preferences.js';
 import {finishBy,deadlineStamp} from '../src/live-time.js';
 import {weekCells,mondayOf} from '../src/week-view.js';
-const base='2026-09-08',make=(s,id='a')=>createQuickTask(parseQuick(s,base),id);
+const base='2026-09-08',make=(s,id='a')=>manualTask(s,base,id);
 test('appearance and reminder preferences survive backup validation',()=>{const p={...defaultProfile(),appearance:defaultAppearance(),reminderSettings:{...defaultReminders(),times:['07:30','21:00']}};assert.ok(validateBackup(JSON.parse(JSON.stringify({version:2,capacity:90,tasks:[],profile:p,acceptedPlan:null}))));});
 test('invalid colors and themes rejected',()=>{for(const v of ['red','#fff','url(x)','<script>'])assert.equal(validAppearance({...defaultAppearance(),accent:v}),false);assert.equal(validAppearance({...defaultAppearance(),mode:'surprise'}),false);});
 test('notification inputs enforce valid unique times and days',()=>{for(const times of [['24:00'],['21:61'],['08:00','08:00'],['01:00','02:00','03:00','04:00']])assert.equal(validReminders({...defaultReminders(),times}),false);assert.equal(validReminders({...defaultReminders(),times:['08:00'],weekdays:[]}),false);assert.equal(validReminders({...defaultReminders(),weekdays:[7]}),false);});
@@ -21,9 +22,9 @@ test('finish target crosses leap day and year safely',()=>{assert.equal(finishBy
 test('previous-day plan preserves actual submission date and clock',()=>{const t=make('내일 09시까지 물리 보고서 90분'),before=structuredClone(t);const p=plan([t],90,base);assert.equal(p.days[0].used,90);assert.equal(p.days[1].used,0);assert.equal(finishBy(t),base);assert.equal(deadlineStamp(t),+new Date('2026-09-09T09:00:00'));assert.deepEqual(t,before);});
 test('deadline-day manual plan conflicts without losing remaining work',()=>{const t=make('내일까지 물리 보고서 120분');t.planSlots=[{date:addDays(base,1),minutes:60}];const p=plan([t],90,base);assert.equal(p.conflicts.length,1);assert.equal(p.totalShortage,30);assert.equal(p.days.reduce((n,d)=>n+d.used,0),90);});
 test('same-day deadline does not silently use final day',()=>{const p=plan([make('오늘 물리 보고서 60분')],90,base);assert.equal(p.days[0].used,0);assert.equal(p.totalShortage,60);assert.equal(p.overflow[0].reason,'전날 완료 목표 지남');});
-test('Korean relative shorthand retains raw source',()=>{const s='낼 물리학 보고서 60분',p=parseQuick(s,base);assert.equal(p.source,s);assert.equal(p.fields.due,'2026-09-09');assert.equal(p.fields.subject,'물리');assert.equal(parseQuick('담주 금 수학 숙제',base).fields.due,'2026-09-18');});
-test('relative day offsets are removed from titles',()=>{for(const s of ['글피','3일 후','3일 뒤']){const p=parseQuick(s+'까지 물리 보고서 30분',base);assert.equal(p.fields.due,'2026-09-11');assert.equal(p.title,'물리 보고서');}});
-test('math subject labels preserve distinct course titles',()=>{const a=make('금요일 미적분 숙제'),b=make('금요일 기하 숙제','b');assert.equal(a.fields.subject,'수학');assert.equal(b.fields.subject,'수학');assert.notEqual(a.title,b.title);assert.notEqual(inspectNotice('미적분 숙제 다음 주 금요일까지',[b],base)[0].choice,'update');assert.ok(make('금요일 물리학Ⅱ 보고서').title.includes('II'));});
+test('Korean relative shorthand retains raw source',()=>{const s='낼 물리학 보고서 60분',p=parseQuick(s,base);assert.equal(p.source,s);assert.equal(p.fields.due,'2026-09-09');assert.equal(p.fields.subject,'물리학');assert.equal(parseQuick('담주 금 수학 숙제',base).fields.due,'2026-09-18');});
+test('relative day offsets are removed from titles',()=>{for(const s of ['글피','3일 후','3일 뒤']){const p=parseQuick(s+'까지 물리 보고서 30분',base);assert.equal(p.fields.due,'2026-09-11');assert.equal(p.title,'30분');}});
+test('math subject labels preserve distinct course titles',()=>{const a=make('금요일 미적분 숙제'),b=make('금요일 기하 숙제','b');assert.equal(a.fields.subject,'미적분');assert.equal(b.fields.subject,'기하');assert.notEqual(inspectNotice('미적분 숙제 다음 주 금요일까지',[b],base)[0].choice,'update');assert.ok(make('금요일 물리학Ⅱ 보고서').title.includes('Ⅱ'));});
 test('two weekday alternatives are not silently reduced to first',()=>{const p=analyze('물리 보고서 목요일 또는 금요일까지',base);assert.equal(p.fields.due,null);assert.ok(p.issues.some(i=>i.includes('날짜가 여러')));});
 test('explicit date replacement and negative wording',()=>{assert.equal(analyze(finalNoticeText('물리 보고서 9/10이 아니라 9/11'),base).fields.due,'2026-09-11');assert.ok(inspectNotice('물리 보고서 말고 발표 자료 금요일까지',[],base)[0].warnings.length);});
 test('semicolon notices become separate review rows',()=>assert.equal(inspectNotice('물리 보고서 금요일까지; 수학 숙제 내일까지',[],base).length,2));

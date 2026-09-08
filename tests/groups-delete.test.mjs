@@ -30,7 +30,7 @@ test('room access never trusts stale member arrays for automatic rooms',()=>{
  assert.equal(canAccessRoom({auto_key:null,members:['me']},'other',scopes),false);
 });
 test('delete removes only chosen task and its plan, without mutating original',()=>{
- const a=commitEntries([],[parseEntry('내일 물리 보고서 60분','2026-09-08')],null,()=> 'a')[0];
+ const a=commitEntries([],[{...parseEntry('내일 물리 보고서','2026-09-08'),totalMinutes:60,durationRequired:false}],null,()=> 'a')[0];
  a.note='메모';a.planSlots=[{date:'2026-09-08',minutes:30}];
  const b={...structuredClone(a),id:'b',title:'다른 할일',done:true};
  const original=[a,b],snapshot=structuredClone(original),next=removeTask(original,'a');

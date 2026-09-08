@@ -1,3 +1,4 @@
+import {manualTask} from './manual-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseQuick,createQuickTask} from '../src/quick-entry.js';
@@ -8,7 +9,7 @@ import {deadlineStamp,deadlineLabel} from '../src/live-time.js';
 import {plan,validateBackup} from '../src/engine.js';
 import {upgrade} from '../src/profile.js';
 import {authPage} from '../src/account-ui.js';
-const base='2026-09-07',make=(s,id='a')=>createQuickTask(parseQuick(s,base),id),cap=(clock,spent=0)=>({weekly:Array(7).fill(90),today:base,spent,now:+new Date(base+'T'+clock),overrides:{}});
+const base='2026-09-07',make=(s,id='a')=>manualTask(s,base,id),cap=(clock,spent=0)=>({weekly:Array(7).fill(90),today:base,spent,now:+new Date(base+'T'+clock),overrides:{}});
 const old=()=>({...make('내일까지 물리 보고서 제출 60분'),completedMinutes:15,minutes:45,note:'결론만 남음',planSlots:[{date:base,minutes:10}],fields:{...make('내일까지 물리 보고서 제출 60분').fields,materials:'실험 기록지'}});
 test('study and assignment classified separately',()=>{for(const s of ['수학 공부','과학 복습','영어 시험 준비','물리 수행평가 공부'])assert.equal(make(s).category,'study');for(const s of ['물리 보고서 작성','영어 발표 자료 만들기','수학 숙제','화학 과제 제출'])assert.equal(make(s).category,'assignment');});
 test('assignment with materials metadata stays assignment',()=>assert.equal(make('내일 물리 보고서\n준비물: 실험 기록지').category,'assignment'));
@@ -17,7 +18,7 @@ test('matching notice needs no user-selected task',()=>{const [r]=inspectNotice(
 test('natural deadline-change sentence matches',()=>assert.equal(inspectNotice('물리 보고서 마감이 금요일로 변경됐어요. 소요 시간 60분',[old()],base)[0].choice,'update'));
 test('changed due preserves progress, memo, absent materials, pins and total',()=>{const t=old(),rows=inspectNotice('물리 보고서 금요일까지 제출로 변경',[t],base),r=applyNoticeRows([t],rows,()=> 'b');assert.equal(r.updated,1);assert.equal(r.tasks[0].fields.due,'2026-09-11');for(const k of ['note','minutes','totalMinutes','completedMinutes','planSlots'])assert.deepEqual(r.tasks[0][k],t[k]);assert.equal(r.tasks[0].fields.materials,'실험 기록지');assert.equal(r.tasks[0].history.length,1);assert.equal(t.history.length,0);});
 test('new notice adds without changing original',()=>{const t=old(),r=applyNoticeRows([t],inspectNotice('금요일 화학 실험 보고서 90분',[t],base),()=> 'b');assert.equal(r.added,1);assert.deepEqual(r.tasks[0],t);assert.equal(r.tasks[1].category,'assignment');});
-test('batch notices can add and update atomically',()=>{const t=old(),r=applyNoticeRows([t],inspectNotice('물리 보고서 금요일까지 90분\n금요일 수학 숙제 30분',[t],base),()=> 'b');assert.equal(r.updated,1);assert.equal(r.added,1);assert.equal(r.tasks[0].minutes,75);});
+test('batch notices can add and update atomically',()=>{const t=old(),r=applyNoticeRows([t],inspectNotice('물리 보고서 금요일까지 90분\n금요일 수학 숙제 30분',[t],base),()=> 'b');assert.equal(r.updated,1);assert.equal(r.added,1);assert.equal(r.tasks[0].minutes,45);});
 test('multiline notice attaches date and labeled metadata',()=>{const rows=inspectNotice('물리 보고서\n9월 8일에서 9월 10일로 변경\n제출 방식: PDF',[old()],base);assert.equal(rows.length,1);assert.equal(rows[0].parsed.fields.due,'2026-09-10');assert.equal(rows[0].parsed.fields.format,'PDF');});
 test('arrow deadline uses new date',()=>assert.equal(inspectNotice('물리 보고서 9/8 → 9/10',[old()],base)[0].parsed.fields.due,'2026-09-10'));
 test('ambiguous existing matches require choice',()=>{const tasks=[old(),{...old(),id:'b'}],rows=inspectNotice('물리 보고서 금요일까지',[...tasks],base);assert.equal(rows[0].choice,'choose');assert.throws(()=>applyNoticeRows(tasks,rows,()=> 'c'));});
@@ -26,7 +27,7 @@ test('ambiguous dates are explicit warnings, not silently chosen',()=>{const r=i
 test('cancellation is warned and never deletes original',()=>{const t=old(),rows=inspectNotice('물리 보고서 취소',[t],base);assert.ok(rows[0].warnings.some(s=>s.includes('취소')));rows[0]={...rows[0],choice:'update',targetId:t.id,old:t};assert.equal(applyNoticeRows([t],rows,()=> 'b').tasks[0].done,false);});
 test('repeated notice skipped rather than duplicating history',()=>{const t=old(),rows=inspectNotice('물리 보고서 내일까지 제출 60분',[t],base),r=applyNoticeRows([t],rows,()=> 'b');assert.equal(r.skipped,1);assert.equal(r.tasks[0].history.length,0);});
 test('stale and double-target notices reject without partial mutation',()=>{const t=old(),rows=inspectNotice('물리 보고서 금요일까지',[t],base);assert.throws(()=>applyNoticeRows([{...t,note:'changed'}],rows,()=> 'b'));assert.throws(()=>applyNoticeRows([t],[...rows,...rows],()=> 'b'));assert.equal(t.history.length,0);});
-test('duration below completed work rejected',()=>{const t=old();assert.throws(()=>applyNoticeRows([t],inspectNotice('물리 보고서 금요일까지 5분',[t],base),()=> 'b'));});
+test('manually entered duration below completed work rejected',()=>{const t=old(),rows=inspectNotice('물리 보고서 금요일까지',[t],base);rows[0].parsed.totalMinutes=5;rows[0].parsed.minutesEstimated=false;assert.throws(()=>applyNoticeRows([t],rows,()=> 'b'));});
 test('real-time today capacity capped by minutes until midnight',()=>{assert.equal(dailyCapacity(cap('23:30:00'),base),30);assert.equal(dailyCapacity(cap('23:45:00'),base),15);assert.equal(dailyCapacity(cap('20:00:00',30),base),60);assert.equal(dailyCapacity(cap('23:30:00',80),base),10);});
 test('weekly totals account for live today cap exactly once',()=>{assert.equal(availableMinutes(cap('23:30:00'),base,7),570);assert.equal(availableMinutes(cap('23:30:00'),'2026-09-08',7),630);});
 test('clock passage never completes work',()=>{const t=old();taskMetrics(t,cap('23:59:00'),base);assert.equal(remainingMinutes(t),45);assert.equal(t.done,false);});

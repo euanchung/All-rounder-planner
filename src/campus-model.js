@@ -9,7 +9,7 @@ export function monthDays(month){const d=new Date(month.slice(0,7)+'-01T12:00:00
 export function moveMonth(month,n){const d=new Date(month.slice(0,7)+'-01T12:00:00');d.setMonth(d.getMonth()+n);return iso(d);}
 export function normalizedRange(a,b){return [a,b].sort();}
 export function typeOf(t){return t.taskType||(/보고서/.test(t.title)?'report':/수행평가/.test(t.title)?'assessment':/대회/.test(t.title)?'contest':/발표/.test(t.title)?'presentation':t.category||'assignment');}
-export function parseEntry(text,base){const p=parseQuick(text,base);return {...p,taskType:typeOf(p),priority:/덜\s*중요|낮은\s*중요/.test(text)?1:/매우\s*중요|중요|급해|급함/.test(text)?3:2,difficulty:/매우\s*어려|고난도/.test(text)?5:/어려/.test(text)?4:/쉬운|쉬워/.test(text)?2:3,startDate:null,deadlinePeriod:null};}
+export function parseEntry(text,base,subjects=[]){const p=parseQuick(text,base,subjects);return {...p,taskType:p.taskType||typeOf(p),startDate:null,deadlinePeriod:null};}
 export function tableFor(profile,classTable,week){const key=Object.keys(profile.timetableWeeks||{}).filter(k=>k<=week).sort().at(-1);return classTable?.table||profile.timetableWeeks?.[key]||profile.timetable.map(d=>Array.from({length:9},(_,i)=>d[i]||''));}
 export function weekPlan(tasks,capacity,today,week){const end=addDays(week,6),horizon=Math.max(14,Math.ceil((Date.parse(end)-Date.parse(today))/86400000)+1);const p=plan(tasks,capacity,today,Math.min(740,horizon));return {...p,days:Array.from({length:7},(_,i)=>{const date=addDays(week,i);return p.days.find(d=>d.date===date)||{date,capacity:0,used:0,items:[],past:true};})};}
 export function dueOn(tasks,date,period=null){return tasks.filter(t=>!t.done&&t.fields.due===date&&(!period||!t.deadlinePeriod||t.deadlinePeriod<=period));}
