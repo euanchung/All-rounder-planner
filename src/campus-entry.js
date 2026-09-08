@@ -1,5 +1,9 @@
 import {createQuickTask} from './quick-entry.js';
 import {validDate} from './engine.js';
+export function removeTask(tasks,id){
+ if(typeof id!=='string'||!tasks.some(t=>t.id===id))throw new Error('삭제할 할일을 찾지 못했어요.');
+ return tasks.filter(t=>t.id!==id);
+}
 export function commitEntries(original,entries,editId=null,idFactory=()=>crypto.randomUUID()){
  const tasks=structuredClone(original),touched=new Set();
  for(const d of entries){

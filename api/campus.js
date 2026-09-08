@@ -3,6 +3,7 @@ import {db} from '../server/db.js';
 import {identity,respond,fail} from '../server/security.js';
 import {validTable,validPeriodTimes} from '../src/campus-model.js';
 import {validDate} from '../src/engine.js';
+import {autoGroupScopes,canAccessRoom,ensureAutoGroups} from '../server/auto-groups.js';
 const err=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
 const str=(v,max=100)=>{if(typeof v!=='string'||!v.trim()||v.length>max)err('입력 내용을 확인해 주세요.');return v.trim();};
 const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -13,13 +14,16 @@ export default async function handler(req,res){try{
  const user=await identity(req),sql=db(),url=new URL(req.url,'https://local.invalid');
  const [person]=await sql`SELECT * FROM public.campus_people WHERE user_id=${user.id}`;
  const [member]=await sql`SELECT c.id,c.school,c.grade,c.class_name,c.owner_id,m.role FROM public.campus_members m JOIN public.campus_classes c ON c.id=m.class_id WHERE m.user_id=${user.id}`;
- const roomAccess=async id=>{if(!uuid(id))err('대화방을 확인해 주세요.');const [r]=await sql`SELECT * FROM public.campus_rooms WHERE id=${id} AND ${user.id}=ANY(members)`;if(!r)err('이 대화방의 참여자가 아닙니다.',403);return r;};
+ const scopes=autoGroupScopes(person,member);
+ const roomAccess=async id=>{if(!uuid(id))err('대화방을 확인해 주세요.');const [r]=await sql`SELECT * FROM public.campus_rooms WHERE id=${id}`;if(!r||!canAccessRoom(r,user.id,scopes))err('이 대화방의 참여자가 아닙니다.',403);return r;};
  if(req.method==='GET'){
-  if(url.searchParams.has('room')){const room=await roomAccess(url.searchParams.get('room'));const messages=await sql`SELECT m.id,m.sender_id,p.name,m.body,m.shared,m.created_at FROM public.campus_messages m LEFT JOIN public.campus_people p ON p.user_id=m.sender_id WHERE m.room_id=${room.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE b.user_id=${user.id} AND b.blocked_id=m.sender_id) ORDER BY m.created_at DESC LIMIT 100`;return respond(res,200,{room:{id:room.id,name:room.name,members:room.members},messages:messages.reverse()});}
+  if(url.searchParams.has('room')){const room=await roomAccess(url.searchParams.get('room'));const messages=await sql`SELECT m.id,m.sender_id,p.name,m.body,m.shared,m.created_at FROM public.campus_messages m LEFT JOIN public.campus_people p ON p.user_id=m.sender_id WHERE m.room_id=${room.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=m.sender_id) OR (${!!room.auto_key} AND b.blocked_id=${user.id} AND b.user_id=m.sender_id)) ORDER BY m.created_at DESC LIMIT 100`;return respond(res,200,{room:{id:room.id,name:room.name,members:room.members,auto_kind:room.auto_kind},messages:messages.reverse()});}
   if(url.searchParams.has('week')){const week=url.searchParams.get('week');if(!validDate(week))err('날짜를 확인하세요.');let table=null;if(member){const [r]=await sql`SELECT payload FROM public.campus_tables WHERE class_id=${member.id} AND week<=${week}::date ORDER BY week DESC LIMIT 1`;table=r?.payload||null;}return respond(res,200,{table});}
   const notices=member?await sql`SELECT n.id,n.title,n.body,n.created_at,p.name AS author FROM public.campus_notices n LEFT JOIN public.campus_people p ON p.user_id=n.author_id WHERE n.class_id=${member.id} ORDER BY n.created_at DESC LIMIT 40`:[];
   const people=member?await sql`SELECT p.user_id,p.name,p.subjects,c.school,c.grade,c.class_name,m.role,c.id AS class_id FROM public.campus_people p JOIN public.campus_members m ON m.user_id=p.user_id JOIN public.campus_classes c ON c.id=m.class_id WHERE c.school=${member.school} AND p.discoverable=true AND p.user_id<>${user.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=p.user_id) OR (b.blocked_id=${user.id} AND b.user_id=p.user_id)) ORDER BY c.grade,c.class_name,p.name LIMIT 300`:[];
-  const rooms=await sql`SELECT id,name,members FROM public.campus_rooms WHERE ${user.id}=ANY(members) ORDER BY created_at DESC LIMIT 50`;
+  const automatic=await ensureAutoGroups(sql,scopes);
+  const privateRooms=await sql`SELECT id,name,members,auto_kind FROM public.campus_rooms WHERE auto_key IS NULL AND ${user.id}=ANY(members) ORDER BY created_at DESC LIMIT 50`;
+  const rooms=[...automatic,...privateRooms];
   const applications=user.role==='admin'?await sql`SELECT user_id,name,school,subjects FROM public.campus_people WHERE teacher_status='pending' LIMIT 100`:[];
   const reports=user.role==='admin'?await sql`SELECT id,reason,created_at FROM public.campus_reports ORDER BY created_at DESC LIMIT 100`:[];
   return respond(res,200,{person:person||null,member:member||null,notices,people,rooms,applications,reports});
@@ -54,10 +58,10 @@ export default async function handler(req,res){try{
   const peers=await sql`SELECT p.user_id FROM public.campus_people p JOIN public.campus_members m ON m.user_id=p.user_id JOIN public.campus_classes c ON c.id=m.class_id WHERE p.user_id=ANY(${ids}::text[]) AND c.school=${member.school} AND p.discoverable=true AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=p.user_id) OR (b.user_id=p.user_id AND b.blocked_id=${user.id}))`;if(peers.length!==ids.length)err('동의한 같은 학교 사용자만 초대할 수 있어요.',403);
   const [count]=await sql`SELECT count(*)::integer AS n FROM public.campus_rooms WHERE ${user.id}=ANY(members)`;if(count.n>=50)err('대화방은 최대 50개입니다.');const id=randomUUID();await sql`INSERT INTO public.campus_rooms(id,name,members,created_by) VALUES (${id},${str(body.name,100)},${[user.id,...ids]}::text[],${user.id})`;return respond(res,200,{id});
  }else if(action==='message'){
-  const room=await roomAccess(body.roomId),text=typeof body.text==='string'?body.text.trim():'';if(text.length>4000)err('메시지는 4,000자 이내입니다.');const blocked=await sql`SELECT 1 FROM public.campus_blocks WHERE (user_id=${user.id} AND blocked_id=ANY(${room.members}::text[])) OR (blocked_id=${user.id} AND user_id=ANY(${room.members}::text[])) LIMIT 1`;if(blocked.length)err('차단 관계가 있는 대화방에는 전송할 수 없어요.',403);
+  const room=await roomAccess(body.roomId),text=typeof body.text==='string'?body.text.trim():'';if(text.length>4000)err('메시지는 4,000자 이내입니다.');const blocked=await sql`SELECT 1 FROM public.campus_blocks WHERE (user_id=${user.id} AND blocked_id=ANY(${room.members}::text[])) OR (blocked_id=${user.id} AND user_id=ANY(${room.members}::text[])) LIMIT 1`;if(!room.auto_key&&blocked.length)err('차단 관계가 있는 대화방에는 전송할 수 없어요.',403);
   let shared=null;if(body.taskId){const [w]=await sql`SELECT data FROM public.radar_workspace WHERE user_id=${user.id}`;const t=w?.data.tasks.find(t=>t.id===body.taskId);if(!t)err('내 할일을 찾지 못했어요.');shared={title:t.title,fields:{due:t.fields.due,time:t.fields.time,subject:t.fields.subject},totalMinutes:t.totalMinutes??t.minutes,category:t.category,taskType:t.taskType||null,startDate:t.startDate||null,priority:t.priority,difficulty:t.difficulty||3};}if(!text&&!shared)err('메시지 또는 공유할 할일을 선택해 주세요.');await sql`INSERT INTO public.campus_messages(id,room_id,sender_id,body,shared) VALUES (${randomUUID()},${room.id},${user.id},${text},${shared?JSON.stringify(shared):null}::jsonb)`;
  }else if(action==='leave-room'){
-  const room=await roomAccess(body.roomId);await sql`UPDATE public.campus_rooms SET members=array_remove(members,${user.id}) WHERE id=${room.id}`;
+  const room=await roomAccess(body.roomId);if(room.auto_key)err('자동 그룹은 설정에서 프로필 공개를 끄거나 학급 연결을 해제하면 나갈 수 있어요.');await sql`UPDATE public.campus_rooms SET members=array_remove(members,${user.id}) WHERE id=${room.id}`;
  }else if(action==='block'){
   if(str(body.userId)===user.id)err('자신은 차단할 수 없어요.');await sql`INSERT INTO public.campus_blocks(user_id,blocked_id) VALUES (${user.id},${body.userId}) ON CONFLICT DO NOTHING`;
  }else if(action==='report'){

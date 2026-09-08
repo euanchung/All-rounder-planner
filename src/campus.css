@@ -3,3 +3,9 @@
 @media(max-width:850px){.campus-sidebar{position:sticky;top:0;width:100%;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:8px}.campus-sidebar>p{display:none}.campus-sidebar nav{grid-column:1/-1;grid-row:2;flex-direction:row;overflow-x:auto;gap:4px}.campus-nav{padding:9px;white-space:nowrap;font-size:.8rem}.campus-nav>span{display:none}.profile-shortcut{padding:5px;font-size:.8rem}.profile-shortcut small{display:none}.avatar{width:28px;height:28px}.campus-main{margin-left:0}.home-four,.social-grid{grid-template-columns:1fr}.home-task-list,.board-list{max-height:260px}.week-board{grid-template-columns:repeat(7,minmax(100px,1fr))}.week-column{min-height:260px}.entry-columns{grid-template-columns:1fr}.entry-columns>section:first-child .form-grid{grid-template-columns:1fr 1fr}.campus-header{font-size:.7rem}.entry-submit{flex-direction:column;align-items:stretch}.login-shell{margin:10px auto}.campus-main .panel{padding:18px}}
 .meal-text{white-space:pre-line}.campus-main pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit}
 .skip{transform:translateY(-200%);top:0;color:#111827}.skip:focus{transform:none;top:10px}
+/* Keep destructive actions distinct and automatic groups easy to find. */
+.button.danger { color: #b42318; border-color: #e5a29d; background: transparent; }
+.button.danger:hover { background: #fff0ee; }
+.auto-groups { display: grid; gap: 8px; margin-bottom: 24px; }
+.auto-groups .button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.compact-task { flex-wrap: wrap; }

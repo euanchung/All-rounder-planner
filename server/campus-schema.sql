@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS public.campus_messages (
  id uuid PRIMARY KEY, room_id uuid NOT NULL REFERENCES public.campus_rooms(id), sender_id text NOT NULL, body text NOT NULL, shared jsonb,
  created_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS auto_key text;
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS auto_kind text;
+CREATE UNIQUE INDEX IF NOT EXISTS campus_rooms_auto_key ON public.campus_rooms(auto_key);
 CREATE INDEX IF NOT EXISTS campus_messages_room_date ON public.campus_messages(room_id,created_at);
 CREATE TABLE IF NOT EXISTS public.campus_limits (bucket text PRIMARY KEY, hits integer NOT NULL, expires_at timestamptz NOT NULL);
 CREATE TABLE IF NOT EXISTS public.campus_blocks (user_id text NOT NULL, blocked_id text NOT NULL, PRIMARY KEY(user_id,blocked_id));
