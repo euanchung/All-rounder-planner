@@ -89,7 +89,7 @@ export function plan(tasks, capacity, start=today(), horizon=14) {
     let left=remainingMinutes(task);
     for(const slot of (task.planSlots||[]).slice().sort((a,b)=>a.date.localeCompare(b.date))){
       if(slot.date<start)continue;
-      if(!validDate(task.fields.due)||slot.date>finishBy(task)){conflicts.push({id:task.id,date:slot.date,reason:'전날 완료 목표를 벗어난 직접 계획'});continue;}
+      if(!validDate(task.fields.due)||slot.date>finishBy(task)||task.startDate&&slot.date<task.startDate){conflicts.push({id:task.id,date:slot.date,reason:'작업 기간 또는 전날 완료 목표를 벗어난 직접 계획'});continue;}
       const day=days.find(d=>d.date===slot.date);if(!day)continue;
       const n=Math.min(slot.minutes,left,Math.max(0,capacityBeforeDeadline(capacity,day.date,task)-day.used));
       if(n){day.used+=n;day.items.push({id:task.id,title:task.title,minutes:n,manual:true});left-=n;reserved.set(task.id,(reserved.get(task.id)||0)+n);}
@@ -102,7 +102,7 @@ export function plan(tasks, capacity, start=today(), horizon=14) {
     if(finishBy(task)>days.at(-1).date)continue;
     // User pins reserve time first. Unpinned work still reserves earlier deadlines first.
     for(let i=days.length-1;i>=0&&remaining>0;i--){
-      const day=days[i];if(day.date>finishBy(task))continue;
+      const day=days[i];if(day.date>finishBy(task)||task.startDate&&day.date<task.startDate)continue;
       const minutes=Math.min(remaining,Math.max(0,capacityBeforeDeadline(capacity,day.date,task)-day.used));
       if(minutes){day.used+=minutes;day.items.push({id:task.id,title:task.title,minutes});remaining-=minutes;}
     }

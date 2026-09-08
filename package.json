@@ -8,7 +8,7 @@
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check src/app.js && node --check src/engine.js"
+    "check": "node --check src/campus-app.js && node --check src/campus-ui.js && node --check api/campus.js && node --check api/tutor.js && node --check src/engine.js"
   },
   "engines": {
     "node": ">=22"
@@ -16,6 +16,7 @@
   "dependencies": {
     "@neondatabase/auth": "^0.5.0-beta",
     "@neondatabase/serverless": "^1.1.0",
+    "ai": "^7.0.93",
     "jose": "^6.2.12"
   },
   "devDependencies": {

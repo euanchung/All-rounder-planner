@@ -1,0 +1,67 @@
+import {createHash,randomBytes,randomUUID} from 'node:crypto';
+import {db} from '../server/db.js';
+import {identity,respond,fail} from '../server/security.js';
+import {validTable,validPeriodTimes} from '../src/campus-model.js';
+import {validDate} from '../src/engine.js';
+const err=(message,status=400)=>{throw Object.assign(new Error(message),{status});};
+const str=(v,max=100)=>{if(typeof v!=='string'||!v.trim()||v.length>max)err('입력 내용을 확인해 주세요.');return v.trim();};
+const uuid=v=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+const hash=v=>createHash('sha256').update(v).digest('hex');
+async function limit(sql,user,action,max=30){const minute=Math.floor(Date.now()/60000),[r]=await sql`INSERT INTO public.campus_limits(bucket,hits,expires_at) VALUES (${user+':'+action+':'+minute},1,now()+interval '5 minutes') ON CONFLICT(bucket) DO UPDATE SET hits=campus_limits.hits+1 RETURNING hits`;if(r.hits>max)err('요청이 많아요. 1분 뒤 다시 시도해 주세요.',429);}
+export default async function handler(req,res){try{
+ if(!['GET','POST'].includes(req.method))return respond(res,405,{error:'Method not allowed'});
+ const user=await identity(req),sql=db(),url=new URL(req.url,'https://local.invalid');
+ const [person]=await sql`SELECT * FROM public.campus_people WHERE user_id=${user.id}`;
+ const [member]=await sql`SELECT c.id,c.school,c.grade,c.class_name,c.owner_id,m.role FROM public.campus_members m JOIN public.campus_classes c ON c.id=m.class_id WHERE m.user_id=${user.id}`;
+ const roomAccess=async id=>{if(!uuid(id))err('대화방을 확인해 주세요.');const [r]=await sql`SELECT * FROM public.campus_rooms WHERE id=${id} AND ${user.id}=ANY(members)`;if(!r)err('이 대화방의 참여자가 아닙니다.',403);return r;};
+ if(req.method==='GET'){
+  if(url.searchParams.has('room')){const room=await roomAccess(url.searchParams.get('room'));const messages=await sql`SELECT m.id,m.sender_id,p.name,m.body,m.shared,m.created_at FROM public.campus_messages m LEFT JOIN public.campus_people p ON p.user_id=m.sender_id WHERE m.room_id=${room.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE b.user_id=${user.id} AND b.blocked_id=m.sender_id) ORDER BY m.created_at DESC LIMIT 100`;return respond(res,200,{room:{id:room.id,name:room.name,members:room.members},messages:messages.reverse()});}
+  if(url.searchParams.has('week')){const week=url.searchParams.get('week');if(!validDate(week))err('날짜를 확인하세요.');let table=null;if(member){const [r]=await sql`SELECT payload FROM public.campus_tables WHERE class_id=${member.id} AND week<=${week}::date ORDER BY week DESC LIMIT 1`;table=r?.payload||null;}return respond(res,200,{table});}
+  const notices=member?await sql`SELECT n.id,n.title,n.body,n.created_at,p.name AS author FROM public.campus_notices n LEFT JOIN public.campus_people p ON p.user_id=n.author_id WHERE n.class_id=${member.id} ORDER BY n.created_at DESC LIMIT 40`:[];
+  const people=member?await sql`SELECT p.user_id,p.name,p.subjects,c.school,c.grade,c.class_name,m.role,c.id AS class_id FROM public.campus_people p JOIN public.campus_members m ON m.user_id=p.user_id JOIN public.campus_classes c ON c.id=m.class_id WHERE c.school=${member.school} AND p.discoverable=true AND p.user_id<>${user.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=p.user_id) OR (b.blocked_id=${user.id} AND b.user_id=p.user_id)) ORDER BY c.grade,c.class_name,p.name LIMIT 300`:[];
+  const rooms=await sql`SELECT id,name,members FROM public.campus_rooms WHERE ${user.id}=ANY(members) ORDER BY created_at DESC LIMIT 50`;
+  const applications=user.role==='admin'?await sql`SELECT user_id,name,school,subjects FROM public.campus_people WHERE teacher_status='pending' LIMIT 100`:[];
+  const reports=user.role==='admin'?await sql`SELECT id,reason,created_at FROM public.campus_reports ORDER BY created_at DESC LIMIT 100`:[];
+  return respond(res,200,{person:person||null,member:member||null,notices,people,rooms,applications,reports});
+ }
+ const body=typeof req.body==='string'?JSON.parse(req.body):req.body;if(!body||JSON.stringify(body).length>40000)err('요청이 너무 큽니다.');const action=str(body.action,40);await limit(sql,user.id,action,action==='join'?5:30);
+ if(action==='profile'){
+  const [workspace]=await sql`SELECT data FROM public.radar_workspace WHERE user_id=${user.id}`;const p=workspace?.data?.profile;if(!p?.campusOnboarded)err('먼저 개인 설정을 저장해 주세요.');
+  await sql`INSERT INTO public.campus_people(user_id,name,school,grade,class_name,discoverable) VALUES (${user.id},${str(p.name)},${str(p.school)},${str(p.grade)},${str(p.className)},${body.discoverable===true}) ON CONFLICT(user_id) DO UPDATE SET name=EXCLUDED.name,school=EXCLUDED.school,grade=EXCLUDED.grade,class_name=EXCLUDED.class_name,discoverable=EXCLUDED.discoverable,teacher_status=CASE WHEN campus_people.school<>EXCLUDED.school THEN 'none' ELSE campus_people.teacher_status END,updated_at=now()`;
+ }else if(action==='request-teacher'){
+  if(!person)err('개인 설정에서 소통 프로필을 먼저 저장해 주세요.');if(person.teacher_status==='approved')err('이미 승인된 선생님입니다.');
+  await sql`UPDATE public.campus_people SET teacher_status='pending',subjects=${str(body.subjects,200)} WHERE user_id=${user.id}`;
+ }else if(action==='approve-teacher'){
+  if(user.role!=='admin')err('관리자만 승인할 수 있어요.',403);await sql`UPDATE public.campus_people SET teacher_status=${body.approve===true?'approved':'none'} WHERE user_id=${str(body.userId)} AND teacher_status='pending'`;
+ }else if(action==='create-class'){
+  if(person?.teacher_status!=='approved'&&user.role!=='admin')err('관리자에게 승인받은 선생님만 학급을 만들 수 있어요.',403);if(member)err('이미 연결된 학급이 있어요.');if(!person)err('먼저 소통 프로필을 저장해 주세요.');
+  const id=randomUUID(),code=randomBytes(9).toString('base64url');await sql.transaction([sql`INSERT INTO public.campus_classes(id,school,grade,class_name,owner_id,invite_hash) VALUES (${id},${person.school},${person.grade},${person.class_name},${user.id},${hash(code)})`,sql`INSERT INTO public.campus_members(class_id,user_id,role) VALUES (${id},${user.id},'teacher')`]);return respond(res,200,{code});
+ }else if(action==='invite'){
+  if(member?.owner_id!==user.id)err('담당 선생님만 발급할 수 있어요.',403);const code=randomBytes(9).toString('base64url');await sql`UPDATE public.campus_classes SET invite_hash=${hash(code)} WHERE id=${member.id}`;return respond(res,200,{code});
+ }else if(action==='join'){
+  if(!person)err('개인 설정에서 소통 프로필을 먼저 저장해 주세요.');if(member)err('이미 학급에 연결되어 있어요.');if(body.consent!==true)err('학급 소속 공유 안내를 확인해 주세요.');const [c]=await sql`SELECT id,school,grade,class_name FROM public.campus_classes WHERE invite_hash=${hash(str(body.code,30))}`;if(!c)err('유효하지 않은 초대 코드입니다.');if([person.school,person.grade,person.class_name].join('|')!==[c.school,c.grade,c.class_name].join('|'))err('개인 설정의 학교·학년·반과 초대 학급이 달라요. 먼저 소속을 확인해 주세요.');await sql`INSERT INTO public.campus_members(class_id,user_id,role) VALUES (${c.id},${user.id},'student')`;
+ }else if(action==='leave-class'){
+  if(member?.owner_id===user.id)err('학급 운영 중인 선생님은 소속을 바꿀 수 없어요. 관리자에게 문의하세요.');
+  await sql.transaction([sql`DELETE FROM public.campus_members WHERE user_id=${user.id}`,sql`UPDATE public.campus_rooms SET members=array_remove(members,${user.id}) WHERE ${user.id}=ANY(members)`]);
+ }else if(action==='leader'){
+  if(member?.owner_id!==user.id)err('담당 선생님만 반장을 지정할 수 있어요.',403);await sql`UPDATE public.campus_members SET role=${body.enabled===true?'leader':'student'} WHERE class_id=${member.id} AND user_id=${str(body.userId)} AND role<>'teacher'`;
+ }else if(action==='notice'){
+  if(!member||!['teacher','leader'].includes(member.role))err('선생님과 반장만 공지를 게시할 수 있어요.',403);await sql`INSERT INTO public.campus_notices(id,class_id,author_id,title,body) VALUES (${randomUUID()},${member.id},${user.id},${str(body.title,200)},${str(body.text,12000)})`;
+ }else if(action==='timetable'){
+  if(member?.owner_id!==user.id)err('담당 선생님만 학급 시간표를 편집할 수 있어요.',403);if(!validDate(body.week)||!validTable(body.table)||!validPeriodTimes(body.periodTimes))err('시간표와 교시 시각을 확인해 주세요.');await sql`INSERT INTO public.campus_tables(class_id,week,payload) VALUES (${member.id},${body.week},${JSON.stringify({table:body.table,periodTimes:body.periodTimes})}::jsonb) ON CONFLICT(class_id,week) DO UPDATE SET payload=EXCLUDED.payload`;
+ }else if(action==='room'){
+  if(!member||!person?.discoverable)err('학급 연결과 프로필 공개 동의가 필요해요.');if(!Array.isArray(body.members)||body.members.length<1||body.members.length>19||body.members.some(v=>typeof v!=='string'||v===user.id))err('1~19명의 대화 상대를 선택하세요.');const ids=[...new Set(body.members)];
+  const peers=await sql`SELECT p.user_id FROM public.campus_people p JOIN public.campus_members m ON m.user_id=p.user_id JOIN public.campus_classes c ON c.id=m.class_id WHERE p.user_id=ANY(${ids}::text[]) AND c.school=${member.school} AND p.discoverable=true AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=p.user_id) OR (b.user_id=p.user_id AND b.blocked_id=${user.id}))`;if(peers.length!==ids.length)err('동의한 같은 학교 사용자만 초대할 수 있어요.',403);
+  const [count]=await sql`SELECT count(*)::integer AS n FROM public.campus_rooms WHERE ${user.id}=ANY(members)`;if(count.n>=50)err('대화방은 최대 50개입니다.');const id=randomUUID();await sql`INSERT INTO public.campus_rooms(id,name,members,created_by) VALUES (${id},${str(body.name,100)},${[user.id,...ids]}::text[],${user.id})`;return respond(res,200,{id});
+ }else if(action==='message'){
+  const room=await roomAccess(body.roomId),text=typeof body.text==='string'?body.text.trim():'';if(text.length>4000)err('메시지는 4,000자 이내입니다.');const blocked=await sql`SELECT 1 FROM public.campus_blocks WHERE (user_id=${user.id} AND blocked_id=ANY(${room.members}::text[])) OR (blocked_id=${user.id} AND user_id=ANY(${room.members}::text[])) LIMIT 1`;if(blocked.length)err('차단 관계가 있는 대화방에는 전송할 수 없어요.',403);
+  let shared=null;if(body.taskId){const [w]=await sql`SELECT data FROM public.radar_workspace WHERE user_id=${user.id}`;const t=w?.data.tasks.find(t=>t.id===body.taskId);if(!t)err('내 할일을 찾지 못했어요.');shared={title:t.title,fields:{due:t.fields.due,time:t.fields.time,subject:t.fields.subject},totalMinutes:t.totalMinutes??t.minutes,category:t.category,taskType:t.taskType||null,startDate:t.startDate||null,priority:t.priority,difficulty:t.difficulty||3};}if(!text&&!shared)err('메시지 또는 공유할 할일을 선택해 주세요.');await sql`INSERT INTO public.campus_messages(id,room_id,sender_id,body,shared) VALUES (${randomUUID()},${room.id},${user.id},${text},${shared?JSON.stringify(shared):null}::jsonb)`;
+ }else if(action==='leave-room'){
+  const room=await roomAccess(body.roomId);await sql`UPDATE public.campus_rooms SET members=array_remove(members,${user.id}) WHERE id=${room.id}`;
+ }else if(action==='block'){
+  if(str(body.userId)===user.id)err('자신은 차단할 수 없어요.');await sql`INSERT INTO public.campus_blocks(user_id,blocked_id) VALUES (${user.id},${body.userId}) ON CONFLICT DO NOTHING`;
+ }else if(action==='report'){
+  const room=await roomAccess(body.roomId);await sql`INSERT INTO public.campus_reports(id,user_id,room_id,reason) VALUES (${randomUUID()},${user.id},${room.id},${str(body.reason,2000)})`;
+ }else err('지원하지 않는 요청입니다.');
+ return respond(res,200,{ok:true});
+}catch(error){fail(res,error);}}

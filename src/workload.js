@@ -27,6 +27,7 @@ export function capacityBeforeDeadline(capacity,date,task){
  return date>finishBy(task)?0:dailyCapacity(capacity,date);
 }
 export function taskAvailable(task,capacity,start){
+ start=task.startDate&&task.startDate>start?task.startDate:start;
  const count=Math.max(0,(daysLeft(finishBy(task),start)??-1)+1);
  if(!count)return 0;
  return availableMinutes(capacity,start,count);
@@ -42,7 +43,7 @@ export function availableMinutes(capacity,start,count){
   return Math.max(0,sum);
 }
 export function taskMetrics(task,capacity,start){
-  const remaining=remainingMinutes(task),left=daysLeft(task.fields?.due,start),days=left===null?null:Math.max(0,daysLeft(finishBy(task),start)+1);
+  const remaining=remainingMinutes(task),left=daysLeft(task.fields?.due,start),days=left===null?null:Math.max(0,daysLeft(finishBy(task),task.startDate&&task.startDate>start?task.startDate:start)+1);
   const available=days===null?null:taskAvailable(task,capacity,start);
   const parts={deadline:left===null?0:35/(1+Math.max(0,left)/3),workload:25*clamp(remaining/240,0,1),importance:20*clamp(((task.priority??2)-1)/2,0,1),difficulty:20*clamp(((task.difficulty??3)-1)/4,0,1)};
   const score=task.done||remaining===0?0:Math.round(Object.values(parts).reduce((a,b)=>a+b,0));
@@ -53,7 +54,7 @@ export function rankedTasks(tasks,capacity,start){return tasks.slice().sort((a,b
 export function workloadSnapshot(tasks,capacity,start){
   const active=tasks.filter(t=>!t.done&&remainingMinutes(t)>0),dated=active.filter(t=>daysLeft(t.fields.due,start)!==null&&daysLeft(finishBy(t),start)>=0&&(capacity?.now===undefined||deadlineStamp(t)>capacity.now)).sort((a,b)=>deadlineStamp(a)-deadlineStamp(b));
   let used=0,maxShortage=0,criticalDue=null,firstBreach=null;
-  for(const task of dated){used+=remainingMinutes(task);const gap=used-taskAvailable(task,capacity,start);if(gap>0)firstBreach||=task.fields.due;if(gap>maxShortage){maxShortage=gap;criticalDue=task.fields.due;}}
+  for(const task of dated){used+=remainingMinutes(task);const gap=Math.max(used-taskAvailable({...task,startDate:null},capacity,start),remainingMinutes(task)-taskAvailable(task,capacity,start));if(gap>0)firstBreach||=task.fields.due;if(gap>maxShortage){maxShortage=gap;criticalDue=task.fields.due;}}
   return {missedTargets:active.filter(t=>t.fields.due&&finishBy(t)<start&&t.fields.due>=start),maxShortage,criticalDue,firstBreach,extraPerDay:criticalDue?Math.ceil(maxShortage/Math.max(1,daysLeft(criticalDue,start))):0,overdue:active.filter(t=>daysLeft(t.fields.due,start)!==null&&(daysLeft(t.fields.due,start)<0||capacity?.now!==undefined&&deadlineStamp(t)<=capacity.now)),unknown:active.filter(t=>daysLeft(t.fields.due,start)===null),remaining:active.reduce((n,t)=>n+remainingMinutes(t),0)};
 }
 export function resizeProblems(problems=[],count){return Array.from({length:count},(_,i)=>problems[i]||{number:i+1,status:'todo',reason:'approach',note:'',tried:''});}
@@ -61,6 +62,9 @@ export const BLOCK_REASONS={concept:'개념이 헷갈려요',approach:'어디서
 export function nextSteps(reason){return ({concept:['문제에 나온 용어와 조건을 각각 적어 보세요.','교과서에서 관련 정의·정리를 한 개 찾아보세요.','쉬운 예제에 그 정의를 먼저 적용해 보세요.'],approach:['구해야 하는 것과 주어진 조건을 분리해 적으세요.','그림·표를 그리거나 작은 수를 넣어 규칙을 찾아보세요.','조건을 식 하나로 옮기는 것까지만 목표로 잡으세요.'],calculation:['마지막으로 맞다고 확신하는 줄을 표시하세요.','부호·분모·괄호와 계산 순서를 한 줄씩 확인하세요.','구한 값을 원래 식에 대입해 좌우가 같은지 확인하세요.'],check:['원래 문제의 정의역과 제외 조건을 다시 확인하세요.','구한 값을 원래 식이나 조건에 대입하세요.','간단한 특수값이나 다른 풀이로 결과를 비교하세요.']})[reason]||[];}
 export function questionDraft(task,problem){return `${task.title} / ${problem.number}번 질문\n막힌 이유: ${BLOCK_REASONS[problem.reason]||'풀이 확인'}\n문제·조건: ${problem.note||'(문제와 조건을 적어 주세요)'}\n여기까지 시도했어요: ${problem.tried||'(해 본 식이나 접근을 적어 주세요)'}\n다음 한 단계에 어떤 개념을 적용하면 좋을까요? 정답보다 접근 방법을 알고 싶어요.`;}
 export function validStudyFields(t){
+  if(t.taskType!==undefined&&!['assignment','assessment','study','report','presentation','contest','bring','buy','other'].includes(t.taskType))return false;
+  if(t.startDate!==undefined&&t.startDate!==null&&(!/^\d{4}-\d{2}-\d{2}$/.test(t.startDate)||!Number.isFinite(Date.parse(t.startDate+'T12:00:00Z'))||new Date(t.startDate+'T12:00:00Z').toISOString().slice(0,10)!==t.startDate||t.fields?.due&&t.startDate>=t.fields.due))return false;
+  if(t.deadlinePeriod!==undefined&&t.deadlinePeriod!==null&&(!Number.isInteger(t.deadlinePeriod)||t.deadlinePeriod<1||t.deadlinePeriod>9))return false;
   if(t.kindVersion!==undefined&&t.kindVersion!==1)return false;
   if(t.note!==undefined&&(typeof t.note!=='string'||t.note.length>2000))return false;
   if(t.category!==undefined&&!['study','assignment','bring','buy','other'].includes(t.category))return false;
