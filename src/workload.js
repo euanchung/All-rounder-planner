@@ -18,6 +18,33 @@ export function undoStudy(task,id){
   const completedMinutes=task.completedMinutes-entry.minutes;
   return {...task,completedMinutes,minutes:task.totalMinutes-completedMinutes,studyLog:task.studyLog.filter(l=>l.id!==id)};
 }
+// Completion is reversible: keep the progress and manual allocation from before the click.
+export function toggleCompletion(task,id,at){
+  const next={...task};
+  if(!task.done){
+    const remaining=remainingMinutes(task);
+    if(remaining>0){
+      Object.assign(next,recordStudy(task,remaining,id,at));
+      next.completionUndo={logId:id,totalMinutes:next.totalMinutes,completedMinutes:task.completedMinutes??0,...(task.planSlots?{planSlots:task.planSlots.map(s=>({...s}))}:{})};
+    }
+    next.done=true;
+    return next;
+  }
+  next.done=false;
+  const snapshot=task.completionUndo;
+  const entry=snapshot?task.studyLog?.find(l=>l.id===snapshot.logId):task.studyLog?.at(-1);
+  // Earlier versions recorded completion as the last study entry, without a marker.
+  if(remainingMinutes(task)===0&&entry&&entry.minutes<=task.completedMinutes){
+    Object.assign(next,undoStudy(next,entry.id));
+    if(snapshot&&snapshot.totalMinutes===task.totalMinutes&&snapshot.completedMinutes===next.completedMinutes){
+      if(snapshot.planSlots)next.planSlots=snapshot.planSlots.map(s=>({...s}));
+    }
+  }else if(remainingMinutes(task)===0&&(task.totalMinutes??task.minutes)>0&&!entry){
+    next.completedMinutes=0;next.minutes=task.totalMinutes??task.minutes;next.totalMinutes=next.minutes;
+  }
+  delete next.completionUndo;
+  return next;
+}
 export function daysLeft(due,start){if(!due||!Number.isFinite(dayStamp(due)))return null;return Math.round((dayStamp(due)-dayStamp(start))/86400000);}
 export function dailyCapacity(capacity,date){
  if(capacity?.windows)return studyRemainingMinutes(capacity.windows,date,capacity.now,capacity.windowOverrides);
@@ -76,5 +103,9 @@ export function validStudyFields(t){
   if(t.difficulty!==undefined&&(!Number.isInteger(t.difficulty)||t.difficulty<1||t.difficulty>5))return false;
   if(t.problems!==undefined&&(!Array.isArray(t.problems)||t.problems.length>200||!t.problems.every((p,i)=>p&&p.number===i+1&&['todo','solved','stuck'].includes(p.status)&&Object.hasOwn(BLOCK_REASONS,p.reason)&&['note','tried'].every(k=>typeof p[k]==='string'&&p[k].length<=2000))))return false;
   if(t.studyLog!==undefined&&(!Array.isArray(t.studyLog)||t.studyLog.length>200||!t.studyLog.every(l=>l&&typeof l.id==='string'&&l.id.length<=100&&Number.isInteger(l.minutes)&&l.minutes>0&&l.minutes<=10080&&typeof l.at==='string'&&Number.isFinite(Date.parse(l.at)))))return false;
+  if(t.completionUndo!==undefined){
+    const c=t.completionUndo;
+    if(!c||typeof c.logId!=='string'||c.logId.length>100||!Number.isFinite(c.totalMinutes)||c.totalMinutes<0||c.totalMinutes>10080||!Number.isFinite(c.completedMinutes)||c.completedMinutes<0||c.completedMinutes>c.totalMinutes||!validStudyFields({planSlots:c.planSlots}))return false;
+  }
   return true;
 }

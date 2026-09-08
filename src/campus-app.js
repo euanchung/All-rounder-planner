@@ -17,7 +17,7 @@ import {parseEntry,TYPES,PERIODS,sunday,moveMonth,normalizedRange,weekPlan,empty
 import {createQuickTask} from './quick-entry.js';
 import {commitEntries,removeTask} from './campus-entry.js';
 import {inspectNotice,applyNoticeRows} from './notice-intake.js';
-import {remainingMinutes,dailyCapacity,recordStudy} from './workload.js';
+import {remainingMinutes,dailyCapacity,toggleCompletion} from './workload.js';
 import {finishBy,deadlineStamp} from './live-time.js';
 import {applyAppearance,PALETTES,validAppearance,validReminders,defaultReminders,scheduledReminderSlots} from './preferences.js';
 import {appearancePanel} from './preferences-ui.js';
@@ -128,7 +128,7 @@ document.addEventListener('click',async event=>{const b=event.target.closest('[d
  }
  if(role()==='teacher'&&['complete','edit','receive-task','unpin'].includes(a))throw new Error('선생님은 학급 운영 기능을 이용해 주세요.');
  if(a==='entry-tab'){captureEntry();s.entryIndex=Number(b.dataset.index);render();return;}
- if(a==='complete'){const t=s.data.tasks.find(t=>t.id===b.dataset.id);if(t){if(!t.done&&remainingMinutes(t)>0)Object.assign(t,recordStudy(t,remainingMinutes(t),crypto.randomUUID(),new Date().toISOString()));t.done=!t.done;save();render();}return;}
+ if(a==='complete'){const t=s.data.tasks.find(t=>t.id===b.dataset.id);if(t){const next=toggleCompletion(t,crypto.randomUUID(),new Date().toISOString());s.data.tasks[s.data.tasks.indexOf(t)]=next;save();render();await saved();toast(next.done?'완료했습니다.':'완료를 취소했습니다. 남은 시간을 복구하고 계획에 다시 반영했습니다.');}return;}
  if(a==='month'){captureEntry();const key=b.dataset.key+'Month';s[key]=moveMonth(s[key],Number(b.dataset.step));render();return;}
  if(a==='table-week'){captureEntry();const key=b.dataset.key+'Week';s[key]=addDays(s[key],Number(b.dataset.step)*7);render();return;}
  if(a==='plan-week'){const next=addDays(s.planWeek,Number(b.dataset.step)*7);if(next>addDays(today(),730))return toast('주간 계획은 앞으로 2년까지 확인할 수 있어요.');s.planWeek=next;render();return;}if(a==='plan-today'){s.planWeek=sunday(today());render();return;}
