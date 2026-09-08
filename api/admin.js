@@ -40,7 +40,29 @@ export const createAdminHandler=({getIdentity=identity,getDb=db}={})=>async func
  if(req.method!=='POST')return respond(res,405,{error:'Method not allowed'});
  const b=typeof req.body==='string'?JSON.parse(req.body):req.body;if(!b||JSON.stringify(b).length>10000)deny('요청을 확인하세요.');
  const ops=[],target=b.userId||b.id||null;
- if(b.action==='role'){
+ if(b.action==='delete-user'){
+  if(!uuid(b.userId)||b.confirm!=='DELETE')deny('삭제할 회원과 확인 문구를 확인하세요.');
+  if(b.userId===user.id)deny('자신의 관리자 계정은 삭제할 수 없습니다.',403);
+  const [existing]=await sql`SELECT id FROM neon_auth."user" WHERE id=${b.userId}`;if(!existing)deny('이미 탈퇴했거나 없는 회원입니다.',404);
+  const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE user_id=${b.userId}`;if(admin)deny('관리자 계정은 삭제할 수 없습니다.',403);
+  // Preserve shared posts/audit evidence; remove private workspace and participation atomically.
+  ops.push(
+   sql`UPDATE public.campus_rooms SET status='closed',members=ARRAY[]::text[] WHERE class_id IN(SELECT id FROM public.campus_classes WHERE owner_id=${b.userId})`,
+   sql`DELETE FROM public.campus_members WHERE class_id IN(SELECT id FROM public.campus_classes WHERE owner_id=${b.userId})`,
+   sql`UPDATE public.campus_classes SET closed=true WHERE owner_id=${b.userId}`,
+   sql`UPDATE public.campus_rooms SET members=array_remove(members,${b.userId}) WHERE ${b.userId}=ANY(members)`,
+   sql`DELETE FROM public.campus_members WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.campus_push WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.campus_reads WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.campus_generations WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.radar_workspace WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.campus_people WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.campus_accounts WHERE user_id=${b.userId}`,
+   sql`DELETE FROM public.campus_blocks WHERE user_id=${b.userId} OR blocked_id=${b.userId}`,
+   sql`DELETE FROM public.campus_exclusions WHERE user_id=${b.userId}`,
+   sql`DELETE FROM neon_auth."user" WHERE id=${b.userId} AND NOT EXISTS(SELECT 1 FROM public.radar_admin WHERE user_id=${b.userId})`
+  );
+ }else if(b.action==='role'){
   if(!uuid(b.userId)||!SCHOOL_ROLES.includes(b.role))deny('회원과 역할을 확인하세요.');
   const [existing]=await sql`SELECT id FROM neon_auth."user" WHERE id=${b.userId}`;if(!existing)deny('회원을 찾지 못했어요.',404);
   const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE user_id=${b.userId}`;if(admin)deny('소유자 관리자 권한은 변경할 수 없어요.',403);

@@ -46,7 +46,7 @@
 
 참고: [Neon 메일 설정](https://neon.com/docs/auth/production-checklist#email-provider), [Neon OTP](https://neon.com/docs/auth/guides/email-verification), [iOS Web Push](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/).
 
-공개 사이트: https://all-rounder-planner.vercel.app
+공개 사이트: https://meta-timetable-r7k9.vercel.app
 
 Vercel Hobby + Neon Free를 사용합니다. 사이트 접속·예제 체험에 Vercel 로그인은 필요하지 않습니다. 내 기록을 다른 기기에서 이어 쓰려면 앱 계정으로 로그인합니다. GitHub main 변경은 Vercel에 자동 배포됩니다.
 
