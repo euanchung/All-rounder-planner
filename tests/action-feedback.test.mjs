@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {authFailure,actionMessages,bounded} from '../src/action-feedback.js';
+test('login failures do not reveal account existence or provider detail',()=>{for(const code of ['USER_NOT_FOUND','INVALID_PASSWORD','INVALID_EMAIL_OR_PASSWORD'])assert.equal(authFailure({code,message:'raw provider diagnostic'},'login'),'이메일 또는 비밀번호가 올바르지 않습니다. 가입한 계정인지 확인해 주세요.');});
+test('rate limit, network, reset and signup errors are Korean',()=>{assert.match(authFailure({status:429}),/요청이 너무 많/);assert.match(authFailure(new TypeError('fetch failed')),/서버에 연결/);assert.match(authFailure({},'reset-password'),/비밀번호 변경에 실패/);assert.match(authFailure({},'signup'),/12자/);});
+test('mutation feedback labels distinguish send, approval and changes',()=>{for(const [action,success] of [['message','전송했습니다.'],['role','변경했습니다.'],['approve-group','그룹 개설을 승인했습니다.']]){const m=actionMessages('/api/campus',{method:'POST',body:JSON.stringify({action})});assert.equal(m.success,success);assert.ok(m.pending);assert.match(m.failure,/실패/);}});
+test('polling and reads do not spam success notices',()=>{assert.equal(actionMessages('/api/campus'),null);assert.equal(actionMessages('/api/campus',{method:'POST',body:JSON.stringify({action:'read-room'})}),null);assert.equal(actionMessages('/api/workspace',{method:'PUT'}),null);});
+test('hung requests stop waiting and do not silently retry',async()=>{let attempts=0;await assert.rejects(bounded(new Promise(()=>{attempts++;}),5),e=>e.code==='REQUEST_TIMEOUT');assert.equal(attempts,1);assert.equal(await bounded(Promise.resolve('ok'),10),'ok');});
