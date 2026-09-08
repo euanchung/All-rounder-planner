@@ -13,7 +13,7 @@ http.createServer(async (req, res) => {
       if(body){try{req.body=JSON.parse(body);}catch{res.writeHead(400).end();return;}}
       const {default:handler}=await import('..'+url.pathname+'.js');await handler(req,res);return;
     }
-    const file = resolve(root, '.' + decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname));
+    const file = resolve(root, '.' + decodeURIComponent(['/','/admin','/admin/'].includes(url.pathname) ? '/index.html' : url.pathname));
     if (!file.startsWith(root + sep) || !mime[extname(file)]) {res.writeHead(403).end(); return;}
     const body=await readFile(file);
     res.writeHead(200, {'Content-Type':mime[extname(file)], 'Cache-Control':'no-store'}).end(body);

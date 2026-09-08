@@ -54,6 +54,22 @@ CREATE TABLE IF NOT EXISTS public.campus_school_classes (
 INSERT INTO public.campus_school_classes(school,grade,class_name,owner_id)
  SELECT DISTINCT ON (school,grade,class_name) school,grade,class_name,owner_id FROM public.campus_school_tables
  ORDER BY school,grade,class_name,week ON CONFLICT DO NOTHING;
+-- v10: authoritative roles and explicit, moderated membership.
+ALTER TABLE public.campus_accounts ADD COLUMN IF NOT EXISTS assigned_role text NOT NULL DEFAULT 'student';
+ALTER TABLE public.campus_classes ADD COLUMN IF NOT EXISTS closed boolean NOT NULL DEFAULT false;
+CREATE UNIQUE INDEX IF NOT EXISTS campus_active_affiliation ON public.campus_classes(school,grade,class_name) WHERE closed=false;
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS kind text NOT NULL DEFAULT 'direct';
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'approved';
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS visibility text NOT NULL DEFAULT 'private';
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS school text;
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS class_id uuid REFERENCES public.campus_classes(id);
+ALTER TABLE public.campus_rooms ADD COLUMN IF NOT EXISTS code_hash text;
+CREATE UNIQUE INDEX IF NOT EXISTS campus_class_room ON public.campus_rooms(class_id) WHERE class_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS public.campus_exclusions(scope_id uuid NOT NULL,user_id text NOT NULL,PRIMARY KEY(scope_id,user_id));
+-- Only old automatic rooms are converted. Running this migration again never rejoins anyone.
+UPDATE public.campus_rooms SET kind='group',status='pending',visibility='public',members=ARRAY[]::text[],school=(SELECT p.school FROM public.campus_people p WHERE p.user_id=campus_rooms.created_by),auto_key=NULL,auto_kind=NULL WHERE auto_key IS NOT NULL;
+UPDATE public.campus_rooms SET kind='group',status='pending' WHERE kind='direct' AND cardinality(members)>2;
+
 CREATE OR REPLACE FUNCTION public.campus_tutor_reserve(who text, day_key text)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE keys text[] := ARRAY['tutor:month:'||left(day_key,7),'tutor:site:'||day_key,'tutor:user:'||who||':'||day_key];

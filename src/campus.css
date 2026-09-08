@@ -18,3 +18,4 @@
 .campus-main .panel-heading{flex-wrap:wrap}.campus-main .panel-heading h1{white-space:nowrap}.capacity-legend .available{background:var(--secondary)}.chat-panel .panel-heading>.button{flex-shrink:0}.campus-nav #unread-count:empty{display:none}
 
 .condition-controls .button[aria-pressed=true]{background:var(--secondary);color:var(--secondary-ink);border-color:var(--secondary)}
+.admin-shell{max-width:1200px;margin:0 auto;padding:24px}.admin-shell .admin-users{display:grid;gap:16px}.admin-shell nav{flex-wrap:wrap;margin-bottom:20px}.admin-shell article small{overflow-wrap:anywhere}.admin-shell .panel{margin-bottom:16px}
