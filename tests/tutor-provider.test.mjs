@@ -8,7 +8,7 @@ test('Gemini requires both explicit activation and a server key',()=>{
   process.env.GOOGLE_GENERATIVE_AI_API_KEY=' ';assert.equal(tutorEnabled(),false);
   process.env.GOOGLE_GENERATIVE_AI_API_KEY='synthetic-test-key';assert.equal(tutorEnabled(),true);
   process.env.AI_TUTOR_ENABLED='false';assert.equal(tutorEnabled(),false);
-  assert.equal(MODEL,'gemini-3.8-flash');
+  assert.equal(MODEL,'gemini-3.1-flash-lite');
  }finally{for(const [key,value] of [['AI_TUTOR_ENABLED',before.flag],['GOOGLE_GENERATIVE_AI_API_KEY',before.key]]){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
 });
 test('provider errors are sanitized while quota and application statuses survive',()=>{

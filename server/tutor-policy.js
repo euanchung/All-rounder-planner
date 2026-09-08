@@ -1,9 +1,11 @@
-export const MODEL='gemini-3.8-flash';
+export const MODEL='gemini-3.1-flash-lite';
+export const tutorModels=[MODEL,'gemini-3.5-flash'];
+export function estimatedAiCost(model,usage){const rates=model==='gemini-3.1-flash-lite'?[0.25,1.5]:[1.5,9];return ((usage.inputTokens||0)*rates[0]+(usage.outputTokens||0)*rates[1])/1000000;}
 export const tutorEnabled=()=>process.env.AI_TUTOR_ENABLED==='true'&&!!process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
 export function tutorFailure(error){
  if(error.status)return error;
  const limited=error.statusCode===429;
- return Object.assign(new Error(limited?'Gemini 사용 한도에 도달했어요. 잠시 후 다시 시도해 주세요. 실패한 요청도 횟수에 포함됩니다.':'AI가 답변을 완료하지 못했어요. 잠시 후 다시 시도해 주세요. 계속 실패하면 관리자에게 연결 확인을 요청해 주세요. 실패한 요청도 횟수에 포함됩니다.'),{status:limited?429:503});
+ return Object.assign(new Error(limited?'Gemini 무료 호출 한도에 도달했어요. 잠시 후 다시 시도해 주세요. 실패한 요청은 개인 횟수에서 차감하지 않아요.':[401,403].includes(error.statusCode)?'AI 인증 연결에 문제가 있어요. 관리자에게 API 키 확인을 요청해 주세요.':'AI가 답변을 완료하지 못했어요. 잠시 후 다시 시도해 주세요. 질문과 사진은 유지되며 실패한 요청은 개인 횟수에서 차감하지 않아요.'),{status:limited?429:503});
 }
 export const USER_DAILY=5, SITE_DAILY=30, SITE_MONTHLY=40;
 export const koreaDay=(now=new Date())=>new Date(now.getTime()+9*3600000).toISOString().slice(0,10);

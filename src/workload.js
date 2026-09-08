@@ -1,3 +1,4 @@
+import {studyRemainingMinutes} from './study-windows.js';
 import {minutesBefore,deadlineStamp,finishBy} from './live-time.js';
 // Explainable heuristics, not learned scores or grades. No external service.
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
@@ -19,6 +20,7 @@ export function undoStudy(task,id){
 }
 export function daysLeft(due,start){if(!due||!Number.isFinite(dayStamp(due)))return null;return Math.round((dayStamp(due)-dayStamp(start))/86400000);}
 export function dailyCapacity(capacity,date){
+ if(capacity?.windows)return studyRemainingMinutes(capacity.windows,date,capacity.now,capacity.windowOverrides);
  const week=capacity?.weekly||capacity,base=capacity?.overrides?.[date]??(Array.isArray(week)?week[new Date(date+'T00:00:00Z').getUTCDay()]:week);
  const remaining=Math.max(0,(Number(base)||0)-(capacity?.today===date?(capacity.spent||0):0));
  return capacity?.now!==undefined?Math.min(remaining,minutesBefore(date,null,capacity.now)):remaining;
@@ -34,6 +36,7 @@ export function taskAvailable(task,capacity,start){
 }
 export function availableMinutes(capacity,start,count){
   if(count<=0)return 0;
+  if(capacity?.windows){let total=0;for(let i=0;i<count;i++){const date=new Date(dayStamp(start)+i*86400000).toISOString().slice(0,10);total+=dailyCapacity(capacity,date);}return total;}
   const raw=capacity?.weekly||capacity,week=Array.isArray(raw)?raw:Array(7).fill(raw);
   const full=Math.floor(count/7),first=new Date(start+'T00:00:00Z').getUTCDay();
   let sum=full*week.reduce((a,n)=>a+Math.max(0,Number(n)||0),0);
