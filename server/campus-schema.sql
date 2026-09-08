@@ -37,6 +37,10 @@ CREATE TABLE IF NOT EXISTS public.campus_generations (
  result jsonb, usage jsonb, estimated_cost_usd numeric, created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS campus_generations_user_date ON public.campus_generations(user_id,created_at);
+CREATE TABLE IF NOT EXISTS public.campus_accounts (user_id text PRIMARY KEY, requested_role text NOT NULL DEFAULT 'student', suspended boolean NOT NULL DEFAULT false);
+CREATE TABLE IF NOT EXISTS public.campus_site (id integer PRIMARY KEY CHECK(id=1), sharing_enabled boolean NOT NULL DEFAULT true, notices_enabled boolean NOT NULL DEFAULT true, announcement text NOT NULL DEFAULT '');
+INSERT INTO public.campus_site(id) VALUES(1) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS public.campus_audit (id uuid PRIMARY KEY, actor_id text NOT NULL, target_id text, action text NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE OR REPLACE FUNCTION public.campus_tutor_reserve(who text, day_key text)
 RETURNS text LANGUAGE plpgsql AS $$
 DECLARE keys text[] := ARRAY['tutor:month:'||left(day_key,7),'tutor:site:'||day_key,'tutor:user:'||who||':'||day_key];

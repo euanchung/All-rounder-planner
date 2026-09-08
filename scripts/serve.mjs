@@ -8,7 +8,7 @@ const mime = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
-    if(['/api/workspace','/api/admin','/api/campus','/api/tutor','/api/meals'].includes(url.pathname)){
+    if(['/api/workspace','/api/admin','/api/campus','/api/tutor','/api/meals','/api/schedule'].includes(url.pathname)){
       let body='';for await(const chunk of req){body+=chunk;if(body.length>4_000_000){res.writeHead(413).end();return;}}
       if(body){try{req.body=JSON.parse(body);}catch{res.writeHead(400).end();return;}}
       const {default:handler}=await import('..'+url.pathname+'.js');await handler(req,res);return;

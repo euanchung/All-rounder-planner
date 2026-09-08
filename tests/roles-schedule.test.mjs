@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {effectiveRole,canPublish} from '../src/roles.js';
+import {sciencePreset,currentLesson,validDaySchedule,defaultSchedule,scheduleFromFields} from '../src/day-schedule.js';
+import {validSchedule} from '../server/schedule-policy.js';
+import {capacityBar} from '../src/campus-ui.js';
+import {createAdminHandler} from '../api/admin.js';
+const preset=sciencePreset(),lesson=(date,exam=false)=>currentLesson(preset.daySchedule,preset.table,new Date(date+'+09:00'),exam);
+test('self requested teacher/leader never grants authority',()=>{assert.equal(effectiveRole({role:'member'},{teacher_status:'pending',requested_role:'teacher'},{role:'student'}),'student');assert.equal(effectiveRole(null,null,{role:'teacher'}),'student');});
+test('approved teacher, assigned deputy, admin permissions',()=>{assert.equal(effectiveRole(null,{teacher_status:'approved'},null),'teacher');assert.equal(effectiveRole(null,null,{role:'deputy'}),'deputy');assert.equal(effectiveRole({role:'admin'},null,null),'admin');for(const r of ['teacher','leader','deputy','admin'])assert.ok(canPublish(r));assert.equal(canPublish('student'),false);});
+test('provided school timetable valid with night and exam schedule',()=>{assert.ok(validDaySchedule(preset.daySchedule));assert.ok(validSchedule({...preset,uncertainties:[]}));assert.equal(preset.daySchedule.length,19);});
+for(const [name,date,expected,exam] of [
+ ['class starts inclusive','2026-09-07T08:20:00','물리',false],['class ends exclusive','2026-09-07T09:10:00',null,false],['afternoon correct subject','2026-09-10T15:20:00','R&E',false],['night study','2026-09-07T21:30:00','2자습',false],['Monday no snack','2026-09-07T21:10:00',null,false],['Tuesday snack','2026-09-08T21:10:00','간식',false],['exam hidden default','2026-09-08T00:20:00',null,false],['overnight previous day','2026-09-08T00:20:00','4자습 (시험 기간)',true],['Friday night into Saturday','2026-09-12T00:20:00','4자습 (시험 기간)',true],['Sunday night not Monday','2026-09-07T00:20:00',null,true],['overnight end exclusive','2026-09-08T00:50:00',null,true]])test(name,()=>assert.equal(lesson(date,exam)?.subject||null,expected));
+test('overlap and invalid day rejected',()=>{const rows=defaultSchedule();assert.ok(validDaySchedule(rows));assert.equal(validDaySchedule([...rows,{...rows[0],period:null}]),false);rows[0].days=[7];assert.equal(validDaySchedule(rows),false);});
+test('overnight overlaps with next weekday rejected',()=>{assert.equal(validDaySchedule([{label:'밤',start:'23:00',end:'01:00',days:[1],period:null,examOnly:false},{label:'새벽',start:'00:30',end:'02:00',days:[2],period:null,examOnly:false}]),false);});
+test('manual schedule input validates and skips blank rows',()=>{const row=scheduleFromFields({'schedule-label-0':'야자','schedule-start-0':'22:00','schedule-end-0':'23:00','schedule-days-0':'1,2,3,4,5','schedule-label-1':''});assert.equal(row.length,1);assert.deepEqual(row[0].days,[1,2,3,4,5]);});
+test('capacity bars bounded with zero or overfull time',()=>{const s={data:{profile:{weeklyMinutes:[0,90,90,90,90,90,0]}}};for(const d of [{date:'2026-09-07',capacity:60,used:30},{date:'2026-09-06',capacity:0,used:30}]){const html=capacityBar(s,d);assert.ok(!/NaN|Infinity/.test(html));assert.ok(html.includes('role="img"'));}});
+test('admin endpoint checks trusted identity before any DB access',async()=>{for(const role of ['member','student','teacher','leader']){let used=false;const handler=createAdminHandler({getIdentity:async()=>({id:'fake',role}),getDb:()=>{used=true;}}),res={setHeader(){},end(body){this.body=JSON.parse(body);}};await handler({url:'/api/admin',method:'GET'},res);assert.equal(res.statusCode,403);assert.equal(used,false);}});

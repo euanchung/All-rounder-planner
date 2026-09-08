@@ -1,4 +1,5 @@
 import {addDays,iso,validDate,plan} from './engine.js';
+import {validDaySchedule} from './day-schedule.js';
 import {parseQuick} from './quick-entry.js';
 export const TYPES={assignment:'일반 과제',assessment:'수행평가',study:'공부',report:'보고서',presentation:'발표 준비',contest:'대회 준비',bring:'준비물',buy:'구매',other:'기타'};
 export const PERIODS=['09:00','10:00','11:00','12:00','13:30','14:30','15:30','16:30','17:30'];
@@ -14,4 +15,4 @@ export function weekPlan(tasks,capacity,today,week){const end=addDays(week,6),ho
 export function dueOn(tasks,date,period=null){return tasks.filter(t=>!t.done&&t.fields.due===date&&(!period||!t.deadlinePeriod||t.deadlinePeriod<=period));}
 export const validTable=t=>Array.isArray(t)&&t.length===5&&t.every(d=>Array.isArray(d)&&d.length===9&&d.every(s=>typeof s==='string'&&s.length<=100));
 export const validPeriodTimes=t=>Array.isArray(t)&&t.length===9&&t.every(s=>typeof s==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(s))&&t.every((s,i)=>!i||s>t[i-1]);
-export function validCampusProfile(p){return (p.campusOnboarded===undefined||typeof p.campusOnboarded==='boolean')&&(!p.campusOnboarded||['name','school','grade','className'].every(k=>typeof p[k]==='string'&&p[k].trim().length>0))&&(p.periodTimes===undefined||validPeriodTimes(p.periodTimes))&&(p.timetableWeeks===undefined||p.timetableWeeks&&typeof p.timetableWeeks==='object'&&!Array.isArray(p.timetableWeeks)&&Object.keys(p.timetableWeeks).length<=104&&Object.entries(p.timetableWeeks).every(([k,v])=>validDate(k)&&validTable(v)));}
+export function validCampusProfile(p){return (p.daySchedule===undefined||validDaySchedule(p.daySchedule))&&(p.examMode===undefined||typeof p.examMode==='boolean')&&(p.campusOnboarded===undefined||typeof p.campusOnboarded==='boolean')&&(!p.campusOnboarded||['name','school','grade','className'].every(k=>typeof p[k]==='string'&&p[k].trim().length>0))&&(p.periodTimes===undefined||validPeriodTimes(p.periodTimes))&&(p.timetableWeeks===undefined||p.timetableWeeks&&typeof p.timetableWeeks==='object'&&!Array.isArray(p.timetableWeeks)&&Object.keys(p.timetableWeeks).length<=104&&Object.entries(p.timetableWeeks).every(([k,v])=>validDate(k)&&validTable(v)));}

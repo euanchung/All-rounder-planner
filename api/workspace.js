@@ -1,6 +1,7 @@
 import {db} from '../server/db.js';
 import {identity,respond,fail} from '../server/security.js';
 import {validateBackup} from '../src/engine.js';
+import {roleContext} from '../server/roles.js';
 import {upgrade} from '../src/profile.js';
 export default async function handler(req,res){
   try{
@@ -17,6 +18,8 @@ export default async function handler(req,res){
     if(!body||JSON.stringify(body).length>4_000_000||!Number.isInteger(body.revision)||body.revision<0||!validateBackup(body.data))return respond(res,400,{error:'저장할 데이터 형식이 올바르지 않습니다.'});
     // Pick known fields, so role/user_id cannot be smuggled into identity.
     const value=upgrade(body.data);
+    const context=await roleContext(sql,user);
+    if(context.role==='teacher'){const [old]=await sql`SELECT data FROM public.radar_workspace WHERE user_id=${user.id}`;if(JSON.stringify(old?.data.tasks||[])!==JSON.stringify(value.tasks))return respond(res,403,{error:'선생님은 개인 할일 대신 소통의 공유 할일 등록을 사용해 주세요.'});}
     const [member]=await sql`SELECT c.school,c.grade,c.class_name FROM public.campus_members m JOIN public.campus_classes c ON c.id=m.class_id WHERE m.user_id=${user.id}`;
     if(member&&[value.profile.school,value.profile.grade,value.profile.className].join('|')!==[member.school,member.grade,member.class_name].join('|'))return respond(res,400,{error:'학급 연결 중에는 소속을 바꿀 수 없어요. 소통 화면에서 학급 연결을 해제한 뒤 변경하세요.'});
     const clean={version:2,tasks:value.tasks,capacity:value.capacity,acceptedPlan:value.acceptedPlan||null,profile:value.profile};

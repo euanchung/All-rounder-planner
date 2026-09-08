@@ -16,6 +16,8 @@ export async function identity(req){
   // Administrator is provisioned once by the owner and bound to an immutable user ID.
   // Never promote a newly registered account merely because its email matches.
   const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE slot=1 AND user_id=${user.id}`;
+  const [account]=await sql`SELECT suspended FROM public.campus_accounts WHERE user_id=${user.id}`;
+  if(account?.suspended&&!admin)throw Object.assign(new Error('이 계정은 이용이 정지되었습니다. 관리자에게 문의해 주세요.'),{status:403});
   return {id:user.id,email:user.email,name:user.name,emailVerified:user.emailVerified,role:admin?'admin':'member'};
 }
 export function respond(res,status,body){res.setHeader('Cache-Control','private, no-store');res.statusCode=status;res.setHeader('Content-Type','application/json; charset=utf-8');res.end(JSON.stringify(body));}
