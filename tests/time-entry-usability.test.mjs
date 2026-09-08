@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {parseBatch} from '../src/quick-entry.js';
+import {lessonDeadline} from '../src/lesson-deadline.js';
+import {sciencePreset} from '../src/day-schedule.js';
+import {normalizeStudyTime,readStudyWeek,studyEditor} from '../src/study-windows-ui.js';
+const base='2026-09-08';
+test('multiple dated short assignments are not discarded as headings',()=>{const rows=parseBatch('내일 숙제\n이번주 목요일 과제',base);assert.equal(rows.length,2);assert.equal(rows[0].fields.due,'2026-09-09');assert.equal(rows[1].fields.due,'2026-09-10');});
+test('single date or date plus task is never silently discarded as a heading',()=>{for(const [text,due] of [['내일','2026-09-09'],['내일 숙제','2026-09-09'],['이번주 목요일','2026-09-10'],['이번주 목요일 숙제','2026-09-10'],['다음주 월요일 과제','2026-09-14']]){const rows=parseBatch(text,base);assert.equal(rows.length,1,text);assert.equal(rows[0].fields.due,due);assert.ok(rows[0].recognized.some(r=>r.label==='마감'));}});
+test('multiline headings still propagate date and explicit dates win',()=>{const rows=parseBatch('내일\n물리 보고서\n이번주 목요일 화학 프린트',base);assert.equal(rows.length,2);assert.equal(rows[0].fields.due,'2026-09-09');assert.equal(rows[1].fields.due,'2026-09-10');});
+test('next chemistry lesson resolves a future class and explains recognition',()=>{const preset=sciencePreset(),profile={timetable:preset.table,periodTimes:preset.periodTimes};const d=lessonDeadline(parseBatch('다음 화학 시간 숙제',base)[0],profile,{},base,Date.parse(base+'T19:30:00+09:00'));assert.equal(d.fields.due,'2026-09-09');assert.equal(d.fields.time,'14:10');assert.ok(d.recognized.some(r=>r.raw==='다음 화학 시간'));assert.ok(!d.title.includes('다음 시간'));});
+test('unknown timetable does not discard unresolved lesson phrase',()=>{const d=lessonDeadline(parseBatch('다음 화학 시간 숙제',base)[0],{timetable:Array.from({length:5},()=>Array(9).fill(''))},{},base);assert.equal(d.fields.due,null);assert.ok(d.title.includes('다음 시간'));assert.ok(d.lessonNote.includes('직접'));});
+test('typed clocks normalize and invalid clocks remain invalid',()=>{for(const [v,w]of [['1930','19:30'],['19','19:00'],['9:5','09:05'],[' 09:30 ','09:30']])assert.equal(normalizeStudyTime(v),w);for(const v of ['25:00','19:99','abcd'])assert.throws(()=>readStudyWeek({'study-count-1':1,'study-start-1-0':v,'study-end-1-0':'22:00'}));});
+test('typed ranges preserve overnight and copy controls are available',()=>{const w=readStudyWeek({'study-count-1':1,'study-start-1-0':'2340','study-end-1-0':'00:50'});assert.deepEqual(w[1],[{start:'23:40',end:'00:50'}]);const html=studyEditor(w);assert.equal((html.match(/data-action="study-copy"/g)||[]).length,7);assert.match(html,/type="text"/);});

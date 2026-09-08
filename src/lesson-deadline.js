@@ -14,6 +14,7 @@ export function lessonDeadline(entry,profile,classTables={},base,now=Date.now())
   const index=table[day-1].findIndex((name,i)=>subjectName(name)===subject&&(d.fields.due||deadlineStamp({fields:{due:date,time:times[i]}})>now));
   if(index<0)continue;
   d.fields.due=date;d.fields.time=times[index];d.deadlinePeriod=index+1;d.deadlineAuto=true;
+  if(d.lessonRequest){d.title=d.title.replace(/다음\s*(?:수업|시간)(?:까지|에)?/,' ').trim()||'할일';d.recognized=[...(d.recognized||[]).filter(r=>r.label!=='다음 수업'),{raw:d.lessonRequest,label:'다음 수업',value:date+' '+times[index]}];}
   d.warnings=(d.warnings||[]).filter(w=>!w.startsWith('마감 미정')&&!w.startsWith('수업 시각'));
   d.lessonNote=date+' '+(index+1)+'교시 시작('+times[index]+')까지 · 같은 과목이 여러 교시면 첫 수업 기준';
   return d;
@@ -22,4 +23,3 @@ export function lessonDeadline(entry,profile,classTables={},base,now=Date.now())
  return d;
 }
 export const activeBefore=(tasks,cutoff,now=Date.now())=>tasks.filter(t=>!t.done&&deadlineStamp(t)!==null&&deadlineStamp(t)>now&&deadlineStamp(t)<=cutoff);
-

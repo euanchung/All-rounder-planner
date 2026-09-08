@@ -13,13 +13,13 @@ export function parseQuick(text,base=today(),subjects=[]){
 export function parseBatch(text,base=today(),subjects=[]){
  if(text.length>12000)throw new Error('한 번에 12,000자까지 붙여 넣을 수 있어요.');
  const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean),entries=[];let dateHeader='';
- for(const raw of lines){
+ for(const [lineIndex,raw] of lines.entries()){
   if(/^\[[^\]]+\]\s*\[(?:오전|오후)?\s*\d/.test(raw)||/^[-=]{3,}/.test(raw))continue;
   const line=raw.replace(/^[-•·*☐□✅✔]\s*|^\d+[.)]\s*/,'').trim();
   if(!line)continue;
   if(/^(?:준비물|장소|비용|참가비|제출 방식|제출 방법|대상)\s*[:：]/.test(line)&&entries.length){entries[entries.length-1]+='\n'+line;continue;}
   const heading=line.replace(/[\[\]:：]/g,'').trim();
-  if(/^(?:(?:오늘|내일|모레|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]요일)(?:까지)?|(?:20\d{2}[-./])?\d{1,2}[-./월]\s*\d{1,2}일?)(?:\s*(?:할\s*일|과제|공지|숙제|준비물)(?:\s*(?:정리|목록))?)?$/.test(heading)){dateHeader=heading;continue;}
+  if(lineIndex<lines.length-1&&(!/(?:과제|숙제|준비물)$/.test(heading)||/[\[\]:：]/.test(raw))&&/^(?:(?:오늘|내일|모레|(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]요일)(?:까지)?|(?:20\d{2}[-./])?\d{1,2}[-./월]\s*\d{1,2}일?)(?:\s*(?:할\s*일|과제|공지|숙제|준비물)(?:\s*(?:정리|목록))?)?$/.test(heading)){dateHeader=heading;continue;}
   if(/^(?:오늘의\s*)?(?:할\s*일|과제|공지|숙제)(?:\s*(?:정리|목록))?\s*[:：]?$/.test(line))continue;
   const own=analyze(line,base).fields.due;
   entries.push((!own&&dateHeader?dateHeader.replace(/\s*(?:할\s*일|과제|공지|숙제|준비물).*$/,'')+' ':'')+line);

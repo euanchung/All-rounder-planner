@@ -9,7 +9,7 @@ export function recognizeEntry(source,analysis,subjects=[]){
  const found=[];for(const name of candidates){const re=new RegExp('(?<![가-힣A-Za-z])'+esc(name)+'(?=\\s|[,.!?:;\\[\\]()·]|$|(?:의|을|를)(?:\\s|$))','g');if(re.test(title))found.push(name);}
  // Longest matching subject wins over a contained prefix, but distinct subjects need review.
  const names=found.filter(n=>!found.some(other=>other!==n&&other.includes(n)));
- let subject=null;if(names.length===1){subject=names[0];consume(new RegExp('(?<![가-힣A-Za-z])'+esc(subject)+'(?:의|을|를)?','g'),'과목',subject);}else if(names.length>1)warnings.push('과목이 여러 개예요. 한 줄에 한 할일씩 나누거나 과목을 직접 선택하세요.');
+ let subject=null,lessonRequest=null;if(names.length===1){subject=names[0];const lesson=new RegExp('다음\\s*'+esc(subject)+'\\s*(?:수업|시간)(?:까지|에)?');lessonRequest=source.match(lesson)?.[0]||null;consume(new RegExp('(?<![가-힣A-Za-z])'+esc(subject)+'(?:의|을|를)?','g'),'과목',subject);}else if(names.length>1)warnings.push('과목이 여러 개예요. 한 줄에 한 할일씩 나누거나 과목을 직접 선택하세요.');
  if(analysis.fields.due)consume(/(?:20\d{2}[-./년\s]+)?\d{1,2}(?:월|[/.])\s*\d{1,2}일?(?:까지)?|(?:(?:이번|다음)\s*주\s*|담주\s*)[월화수목금토일](?:요일)?(?:까지)?|[월화수목금토일]요일(?:까지)?|오늘(?:까지)?|내일(?:까지)?|낼(?:까지)?|모레(?:까지)?|글피(?:까지)?|\d{1,3}\s*일\s*(?:뒤|후)(?:까지)?/g,'마감',analysis.fields.due);
  if(analysis.fields.time)consume(/(?:오전|오후)?\s*\d{1,2}(?::\d{2}|시(?!간)(?:\s*\d{1,2}분)?)(?:까지)?/g,'마감 시각',analysis.fields.time);
  const low=/(?<![가-힣])(?:안\s*중요(?:함|한)?|중요하지\s*않(?:음|은)?|덜\s*중요(?:함|한)?|선택(?:사항)?)(?![가-힣])/g,high=/(?<![가-힣])(?:매우\s*중요(?:함|한)?|중요(?:함|한)?|필수)(?![가-힣])/g;
@@ -21,5 +21,5 @@ export function recognizeEntry(source,analysis,subjects=[]){
  let taskType=null;for(const [type,label,re]of rules){if(re.test(title)){taskType||=type;re.lastIndex=0;consume(re,'분류',label);}}
  title=title.replace(/^\s*[-•·*]\s*|^\s*\d+[.)]\s*/,'').replace(/\s+/g,' ').replace(/^[,;:·\s]+|[,;:·\s]+$/g,'').trim();
  if(studyOverride)taskType='study';
- return {title:title||'할일',subject,taskType,priority,difficulty,recognized,warnings};
+ return {title:title||'할일',subject,taskType,priority,difficulty,recognized,warnings,lessonRequest};
 }
