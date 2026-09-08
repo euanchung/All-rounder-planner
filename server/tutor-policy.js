@@ -1,4 +1,10 @@
-export const MODEL='google/gemini-3.8-flash';
+export const MODEL='gemini-3.8-flash';
+export const tutorEnabled=()=>process.env.AI_TUTOR_ENABLED==='true'&&!!process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim();
+export function tutorFailure(error){
+ if(error.status)return error;
+ const limited=error.statusCode===429;
+ return Object.assign(new Error(limited?'Gemini 사용 한도에 도달했어요. 잠시 후 다시 시도해 주세요. 실패한 요청도 횟수에 포함됩니다.':'AI가 답변을 완료하지 못했어요. 잠시 후 다시 시도해 주세요. 계속 실패하면 관리자에게 연결 확인을 요청해 주세요. 실패한 요청도 횟수에 포함됩니다.'),{status:limited?429:503});
+}
 export const USER_DAILY=5, SITE_DAILY=30, SITE_MONTHLY=40;
 export const koreaDay=(now=new Date())=>new Date(now.getTime()+9*3600000).toISOString().slice(0,10);
 export function tutorInput(body){
