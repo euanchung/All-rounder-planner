@@ -1,5 +1,6 @@
+import {normalizeLanguage} from './notice-language.js';
 import {academic} from './task-kind.js';
-import {deadlineStamp} from './live-time.js';
+import {deadlineStamp,finishBy} from './live-time.js';
 import {validProfile} from './profile.js';
 import {remainingMinutes,taskMetrics,validStudyFields,dailyCapacity,capacityBeforeDeadline} from './workload.js';
 // Deterministic, offline Korean notice analysis. No trained model or external AI API.
@@ -15,14 +16,14 @@ const unique = values => [...new Set(values.filter(Boolean))];
 function dateCandidates(text, base) {
   const dates = []; const evidence = []; const issues = [];
   const add = (value, raw) => {if (validDate(value)) {dates.push(value); evidence.push(raw);} else issues.push(`실제 달력에 없는 날짜입니다: ${raw}`);};
-  let rest = text;
+  let rest = normalizeLanguage(text);
   rest = rest.replace(/(20\d{2})[-./년\s]+(\d{1,2})[-./월\s]+(\d{1,2})(?:일)?/g, (raw,y,m,d)=>{add(`${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`,raw);return ' ';});
   rest.replace(/(\d{1,2})\s*(?:월|[/.])\s*(\d{1,2})\s*일?/g,(raw,m,d)=>{add(`${base.slice(0,4)}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`,raw);return raw;});
   if (!dates.length) {
-    for (const [word,offset] of [['오늘',0],['내일',1],['모레',2]]) if (rest.includes(word)) add(addDays(base,offset),word);
+    for(const m of rest.matchAll(/(\d{1,3})\s*일\s*(?:뒤|후)/g))add(addDays(base,Number(m[1])),m[0]);
+    for (const [word,offset] of [['오늘',0],['내일',1],['모레',2],['글피',3]]) if (rest.includes(word)) add(addDays(base,offset),word);
     if (!dates.length) {
-      const match = rest.match(/(?:(이번|다음)\s*주\s*)?([월화수목금토일])요일/);
-      if (match) {
+      for (const match of rest.matchAll(/(?:(이번|다음)\s*주\s*)?([월화수목금토일])요일/g)) {
         const weekday = '일월화수목금토'.indexOf(match[2]);
         const current = new Date(`${base}T12:00:00`).getDay();
         let delta = weekday-current;
@@ -42,11 +43,12 @@ function labeled(text, label) {
 }
 export function analyze(text, base=today()) {
   if (!validDate(base)) throw new Error('공지 작성일을 올바르게 입력해 주세요.');
+  text=normalizeLanguage(text);
   const fields = Object.fromEntries(Object.keys(FIELDS).map(key=>[key,null]));
   const evidence = {}; const issues=[];
   const dates=dateCandidates(text,base); fields.due=dates.value; evidence.due=dates.evidence; issues.push(...dates.issues);
   const put=(key,values)=>{values=unique(values); if(values.length===1) fields[key]=values[0]; else if(values.length>1) issues.push(`${FIELDS[key]} 후보가 여러 개입니다: ${values.join(', ')}`); evidence[key]=values.join(' / ');};
-  put('subject',[...text.matchAll(/물리(?:학)?|화학|생명과학|생물|지구과학|수학|국어|영어|한국사|역사|정보|사회|음악|미술|체육/g)].map(m=>m[0]));
+  put('subject',[...text.matchAll(/물리(?:학)?|화학|생명과학|생물|지구과학|수학|미적분|확률과\s*통계|(?<![가-힣])기하(?![가-힣])|국어|영어|한국사|역사|정보|사회|음악|미술|체육/g)].map(m=>/미적분|확률|기하/.test(m[0])?'수학':m[0]));
   put('amount',[...text.matchAll(/\d+\s*(?:쪽|페이지|문항|문제|장)(?!소)/g)].map(m=>m[0].replace(/\s/g,'')));
   const times = [...text.matchAll(/(?:(오전|오후)\s*)?(\d{1,2})(?::(\d{2})|시(?:\s*(\d{1,2})분)?)/g)].map(m=>{
     let h=Number(m[2]), min=Number(m[3]||m[4]||0);
@@ -87,7 +89,7 @@ export function plan(tasks, capacity, start=today(), horizon=14) {
     let left=remainingMinutes(task);
     for(const slot of (task.planSlots||[]).slice().sort((a,b)=>a.date.localeCompare(b.date))){
       if(slot.date<start)continue;
-      if(!validDate(task.fields.due)||slot.date>task.fields.due){conflicts.push({id:task.id,date:slot.date,reason:'마감일을 벗어난 직접 계획'});continue;}
+      if(!validDate(task.fields.due)||slot.date>finishBy(task)){conflicts.push({id:task.id,date:slot.date,reason:'전날 완료 목표를 벗어난 직접 계획'});continue;}
       const day=days.find(d=>d.date===slot.date);if(!day)continue;
       const n=Math.min(slot.minutes,left,Math.max(0,capacityBeforeDeadline(capacity,day.date,task)-day.used));
       if(n){day.used+=n;day.items.push({id:task.id,title:task.title,minutes:n,manual:true});left-=n;reserved.set(task.id,(reserved.get(task.id)||0)+n);}
@@ -96,11 +98,11 @@ export function plan(tasks, capacity, start=today(), horizon=14) {
   }
   for(const task of sorted){
     let remaining=remainingMinutes(task)-(reserved.get(task.id)||0);
-    if(task.fields.due<start||capacity?.now!==undefined&&deadlineStamp(task)<=capacity.now){if(remaining)overflow.push({id:task.id,minutes:remaining,reason:'마감 지남'});continue;}
-    if(task.fields.due>days.at(-1).date)continue;
+    if(finishBy(task)<start){if(remaining)overflow.push({id:task.id,minutes:remaining,reason:task.fields.due<start||capacity?.now!==undefined&&deadlineStamp(task)<=capacity.now?'마감 지남':'전날 완료 목표 지남'});continue;}
+    if(finishBy(task)>days.at(-1).date)continue;
     // User pins reserve time first. Unpinned work still reserves earlier deadlines first.
     for(let i=days.length-1;i>=0&&remaining>0;i--){
-      const day=days[i];if(day.date>task.fields.due)continue;
+      const day=days[i];if(day.date>finishBy(task))continue;
       const minutes=Math.min(remaining,Math.max(0,capacityBeforeDeadline(capacity,day.date,task)-day.used));
       if(minutes){day.used+=minutes;day.items.push({id:task.id,title:task.title,minutes});remaining-=minutes;}
     }

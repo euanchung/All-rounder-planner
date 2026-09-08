@@ -1,0 +1,31 @@
+/* Theme tokens override the original fixed palette without changing layouts. */
+[data-theme] summary,[data-theme] .task-more>summary,[data-theme] .score,[data-theme] .rank-number,[data-theme] label small,[data-theme] .draft-note,[data-theme] .auth-message{color:var(--ink)}
+[data-theme] .save-strip,[data-theme] .page-heading p,[data-theme] .eyebrow,[data-theme] footer{color:var(--page-ink)}
+[data-theme] .count,[data-theme] .status-chip,[data-theme] .tutorial article,[data-theme] .timetable th,[data-theme] .score-help,[data-theme] .button.lime{background:var(--tint);color:var(--tint-ink);border-color:var(--border)}
+[data-theme] .stats article{background:var(--surface);border-color:var(--border)}
+[data-theme] .stats strong,[data-theme] .stats article>span,[data-theme] .stats p{color:var(--ink)}
+[data-theme] .alert,[data-theme] .alert p,[data-theme] .alert strong,[data-theme] .alert h2{color:#713d0b}
+[data-theme] .warning-text{color:var(--ink);text-decoration:underline;text-decoration-color:#f59e0b;text-underline-offset:4px}
+[data-theme] input:focus,[data-theme] textarea:focus,[data-theme] select:focus{background:var(--surface)}
+[data-theme] input[type=checkbox]{accent-color:var(--accent)}
+html[data-theme],html[data-theme] body{background:var(--page);color:var(--page-ink);color-scheme:light}
+html[data-theme=dark],html[data-theme=dark] body{color-scheme:dark}
+[data-theme] .sidebar,[data-theme] .topbar,[data-theme] .panel,[data-theme] input,[data-theme] select,[data-theme] textarea{background:var(--surface);color:var(--ink);border-color:var(--border)}
+[data-theme] .brand,[data-theme] .brand small,[data-theme] .nav-item,[data-theme] .sidebar .text-button,[data-theme] .sidebar .import-button,[data-theme] label,[data-theme] .task-main h3,[data-theme] .panel h2,[data-theme] .panel h3,[data-theme] .panel strong,[data-theme] .optional-fields,[data-theme] .entry-examples,[data-theme] .task-more{color:var(--ink)}
+[data-theme] .muted,[data-theme] .panel p,[data-theme] .entry-tip,[data-theme] .workspace-label,[data-theme] .sidebar-bottom p,[data-theme] .local-dot{color:var(--muted)}
+[data-theme] .nav-item.active,[data-theme] .nav-item:hover,[data-theme] .pill,[data-theme] .task-tags span,[data-theme] .week-remaining button,[data-theme] .calendar-day,[data-theme] .hint-card,[data-theme] .study-metrics>div,[data-theme] .first-step,[data-theme] .demo-banner{background:var(--tint);color:var(--tint-ink);border-color:var(--border)}
+[data-theme] .calendar-day strong,[data-theme] .task-tags span,[data-theme] .week-remaining strong{color:var(--tint-ink)}
+[data-theme] .logo,[data-theme] .button.primary,[data-theme] .feature-card{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+[data-theme] .button.secondary{background:var(--surface);color:var(--ink);border-color:var(--border)}
+[data-theme] .text-button,[data-theme] .icon-button,[data-theme] .quick-hint,[data-theme] .focus-clock,[data-theme] .extra-analysis>summary{color:var(--ink)}
+[data-theme] input:focus,[data-theme] textarea:focus,[data-theme] select:focus{outline-color:var(--accent);border-color:var(--accent)}
+[data-theme] input::placeholder,[data-theme] textarea::placeholder{color:var(--muted)}
+[data-theme] .calendar-day.selected{outline:2px solid var(--accent)}
+[data-theme] .calendar-day i{background:linear-gradient(to right,var(--accent) var(--fill),var(--border) var(--fill))}
+[data-theme] .past-day:disabled{background:#e5e7eb!important;color:#9ca3af!important;border-color:#e5e7eb!important;cursor:not-allowed;opacity:.65}
+[data-theme] .past-day:disabled strong,[data-theme] .past-day:disabled span,[data-theme] .past-day:disabled small{color:#6b7280!important}
+[data-theme] .past-day i{visibility:hidden}
+.appearance-panel{margin-top:22px}.palette-row{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.palette-button{border:2px solid var(--swatch);border-radius:999px;padding:10px 18px;background:var(--surface);color:var(--ink);cursor:pointer}.palette-button:before{content:'';display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--swatch);margin-right:8px}
+.week-remaining{grid-template-columns:repeat(7,minmax(0,1fr))}
+@media(max-width:600px){.week-remaining{gap:3px}.week-remaining button{padding:12px 2px;min-width:0}.week-remaining strong{font-size:1rem}.week-remaining strong small{font-size:.55rem;margin-left:1px}.week-remaining>button>small{display:none}.week-remaining>button>span{font-size:.65rem}}
+.appearance-panel input[type=color]{height:48px;padding:4px;width:100%;max-width:180px;cursor:pointer}.reminder-days{display:flex;flex-wrap:wrap;gap:16px;border:1px solid var(--border);padding:15px;margin:16px 0;border-radius:10px}.reminder-days label{display:flex;align-items:center;gap:6px}#reminder-settings-form{margin:20px 0}#reminder-settings-form>.checkbox-label{margin:12px 0}

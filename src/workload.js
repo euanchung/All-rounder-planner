@@ -1,4 +1,4 @@
-import {minutesBefore,deadlineStamp} from './live-time.js';
+import {minutesBefore,deadlineStamp,finishBy} from './live-time.js';
 // Explainable heuristics, not learned scores or grades. No external service.
 const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
 const dayStamp=value=>Date.parse(value+'T00:00:00Z');
@@ -24,12 +24,12 @@ export function dailyCapacity(capacity,date){
  return capacity?.now!==undefined?Math.min(remaining,minutesBefore(date,null,capacity.now)):remaining;
 }
 export function capacityBeforeDeadline(capacity,date,task){
- return Math.min(dailyCapacity(capacity,date),date===task.fields.due?minutesBefore(date,task.fields.time,capacity?.now):Infinity);
+ return date>finishBy(task)?0:dailyCapacity(capacity,date);
 }
 export function taskAvailable(task,capacity,start){
- const count=Math.max(0,(daysLeft(task.fields.due,start)??-1)+1);
+ const count=Math.max(0,(daysLeft(finishBy(task),start)??-1)+1);
  if(!count)return 0;
- return Math.max(0,availableMinutes(capacity,start,count)-dailyCapacity(capacity,task.fields.due)+capacityBeforeDeadline(capacity,task.fields.due,task));
+ return availableMinutes(capacity,start,count);
 }
 export function availableMinutes(capacity,start,count){
   if(count<=0)return 0;
@@ -42,19 +42,19 @@ export function availableMinutes(capacity,start,count){
   return Math.max(0,sum);
 }
 export function taskMetrics(task,capacity,start){
-  const remaining=remainingMinutes(task),left=daysLeft(task.fields?.due,start),days=left===null?null:Math.max(0,left+1);
+  const remaining=remainingMinutes(task),left=daysLeft(task.fields?.due,start),days=left===null?null:Math.max(0,daysLeft(finishBy(task),start)+1);
   const available=days===null?null:taskAvailable(task,capacity,start);
   const parts={deadline:left===null?0:35/(1+Math.max(0,left)/3),workload:25*clamp(remaining/240,0,1),importance:20*clamp(((task.priority??2)-1)/2,0,1),difficulty:20*clamp(((task.difficulty??3)-1)/4,0,1)};
   const score=task.done||remaining===0?0:Math.round(Object.values(parts).reduce((a,b)=>a+b,0));
-  const risk=task.done?'완료':remaining===0?'완료 확인':left===null?'마감 미정':(left<0||capacity?.now!==undefined&&deadlineStamp(task)<=capacity.now)?'마감 지남':remaining>available?'시간 부족':remaining===available?'여유 없음':'배치 가능';
-  return {remaining,left,days,available,requiredPerDay:days?Math.ceil(remaining/days):null,availablePerDay:days?Math.floor(available/days):null,score,parts,risk};
+  const risk=task.done?'완료':remaining===0?'완료 확인':left===null?'마감 미정':(left<0||capacity?.now!==undefined&&deadlineStamp(task)<=capacity.now)?'마감 지남':days===0?'전날 완료 목표 지남':remaining>available?'시간 부족':remaining===available?'여유 없음':'배치 가능';
+  return {remaining,left,days,finishBy:finishBy(task),available,requiredPerDay:days?Math.ceil(remaining/days):null,availablePerDay:days?Math.floor(available/days):null,score,parts,risk};
 }
 export function rankedTasks(tasks,capacity,start){return tasks.slice().sort((a,b)=>Number(a.done)-Number(b.done)||taskMetrics(b,capacity,start).score-taskMetrics(a,capacity,start).score||(a.fields.due||'9999').localeCompare(b.fields.due||'9999')||a.title.localeCompare(b.title));}
 export function workloadSnapshot(tasks,capacity,start){
-  const active=tasks.filter(t=>!t.done&&remainingMinutes(t)>0),dated=active.filter(t=>daysLeft(t.fields.due,start)!==null&&daysLeft(t.fields.due,start)>=0&&(capacity?.now===undefined||deadlineStamp(t)>capacity.now)).sort((a,b)=>deadlineStamp(a)-deadlineStamp(b));
+  const active=tasks.filter(t=>!t.done&&remainingMinutes(t)>0),dated=active.filter(t=>daysLeft(t.fields.due,start)!==null&&daysLeft(finishBy(t),start)>=0&&(capacity?.now===undefined||deadlineStamp(t)>capacity.now)).sort((a,b)=>deadlineStamp(a)-deadlineStamp(b));
   let used=0,maxShortage=0,criticalDue=null,firstBreach=null;
   for(const task of dated){used+=remainingMinutes(task);const gap=used-taskAvailable(task,capacity,start);if(gap>0)firstBreach||=task.fields.due;if(gap>maxShortage){maxShortage=gap;criticalDue=task.fields.due;}}
-  return {maxShortage,criticalDue,firstBreach,extraPerDay:criticalDue?Math.ceil(maxShortage/(daysLeft(criticalDue,start)+1)):0,overdue:active.filter(t=>daysLeft(t.fields.due,start)!==null&&(daysLeft(t.fields.due,start)<0||capacity?.now!==undefined&&deadlineStamp(t)<=capacity.now)),unknown:active.filter(t=>daysLeft(t.fields.due,start)===null),remaining:active.reduce((n,t)=>n+remainingMinutes(t),0)};
+  return {missedTargets:active.filter(t=>t.fields.due&&finishBy(t)<start&&t.fields.due>=start),maxShortage,criticalDue,firstBreach,extraPerDay:criticalDue?Math.ceil(maxShortage/Math.max(1,daysLeft(criticalDue,start))):0,overdue:active.filter(t=>daysLeft(t.fields.due,start)!==null&&(daysLeft(t.fields.due,start)<0||capacity?.now!==undefined&&deadlineStamp(t)<=capacity.now)),unknown:active.filter(t=>daysLeft(t.fields.due,start)===null),remaining:active.reduce((n,t)=>n+remainingMinutes(t),0)};
 }
 export function resizeProblems(problems=[],count){return Array.from({length:count},(_,i)=>problems[i]||{number:i+1,status:'todo',reason:'approach',note:'',tried:''});}
 export const BLOCK_REASONS={concept:'개념이 헷갈려요',approach:'어디서 시작할지 모르겠어요',calculation:'계산이 자꾸 틀려요',check:'답을 검산하고 싶어요'};

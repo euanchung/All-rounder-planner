@@ -1,14 +1,16 @@
+import {normalizeLanguage} from './notice-language.js';
 import {inferCategory} from './task-kind.js';
 import {analyze,today,validDate} from './engine.js';
 import {resizeProblems} from './workload.js';
 export const CATEGORIES={study:'공부',assignment:'과제',bring:'준비물',buy:'구매',other:'일상'};
 const durationPattern=/(?<!\d)(?:(-?\d+(?:\.\d+)?)\s*시간(?:\s*(반|\d+\s*분))?|(-?\d+)\s*분)(?!\s*까지)/g;
 export function parseQuick(text,base=today()){
- const source=text.trim(),durations=[];
- const withoutDuration=source.replace(durationPattern,(raw,h,tail,m,offset)=>{if(m&&/\d{1,2}시\s*$/.test(source.slice(0,offset)))return raw;durations.push(h?Number(h)*60+(tail==='반'?30:parseInt(tail||'0')):Number(m));return ' ';});
+ const source=text.trim(),normalized=normalizeLanguage(source),durations=[];
+ const withoutDuration=normalized.replace(durationPattern,(raw,h,tail,m,offset)=>{if(m&&/\d{1,2}시\s*$/.test(normalized.slice(0,offset)))return raw;durations.push(h?Number(h)*60+(tail==='반'?30:parseInt(tail||'0')):Number(m));return ' ';});
  const a=analyze(withoutDuration,base),fields={...a.fields};
  const category=inferCategory(source.split('\n')[0],fields.subject);
  let title=withoutDuration.split('\n')[0].replace(/(?:20\d{2}[-./년\s]+)?\d{1,2}(?:월|[/.])\s*\d{1,2}일?(?:까지)?/g,' ').replace(/(?:(?:이번|다음)\s*주\s*)?[월화수목금토일]요일(?:까지)?|오늘(?:까지)?|내일(?:까지)?|모레(?:까지)?/g,' ').replace(/(?:오전|오후)?\s*\d{1,2}(?::\d{2}|시(?!간)(?:\s*\d{1,2}분)?)(?:까지)?/g,' ').replace(/^\s*[-•·*]\s*|^\s*\d+[.)]\s*/,'').replace(/\s+/g,' ').trim();
+ title=title.replace(/글피(?:까지)?|\d{1,3}\s*일\s*(?:뒤|후)(?:까지)?/g,' ').replace(/\s+/g,' ').trim();
  title=(title||source).slice(0,200);
  if(category==='bring'&&!fields.materials){const item=title.replace(/(?:을|를)?\s*(?:챙기기|챙겨오기|챙겨가기|챙겨오세요|챙겨|가져오기|가져가기|가져오세요|가져와야|챙겨야).*$/,'').trim();if(item)fields.materials=item;}
  const unique=[...new Set(durations)],minutes=unique.length===1?unique[0]:['study','assignment'].includes(category)?30:10;
