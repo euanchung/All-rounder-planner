@@ -5,6 +5,7 @@ import {SCHOOL_ROLES,encodeCode} from '../server/community-policy.js';
 const deny=(text,status=400)=>{throw Object.assign(new Error(text),{status});};
 const uuid=v=>typeof v==='string'&&/^[0-9a-f-]{36}$/i.test(v);
 const name=v=>{if(typeof v!=='string'||!v.trim()||v.length>100)deny('이름·소속을 확인하세요.');return v.trim();};
+const day=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v+'T00:00:00Z'));
 export const createAdminHandler=({getIdentity=identity,getDb=db}={})=>async function handler(req,res){try{
  const user=await getIdentity(req);if(user.role!=='admin')deny('관리자만 사용할 수 있습니다.',403);
  const sql=getDb(),url=new URL(req.url,'https://local.invalid');
@@ -21,7 +22,7 @@ export const createAdminHandler=({getIdentity=identity,getDb=db}={})=>async func
   if(url.searchParams.has('table')){
    const school=name(url.searchParams.get('school')),grade=name(url.searchParams.get('grade')),className=name(url.searchParams.get('className'));
    const tables=await sql`SELECT week::text,payload FROM public.campus_school_tables WHERE school=${school} AND grade=${grade} AND class_name=${className} UNION SELECT t.week::text,t.payload FROM public.campus_tables t JOIN public.campus_classes c ON c.id=t.class_id WHERE c.school=${school} AND c.grade=${grade} AND c.class_name=${className} ORDER BY week DESC`;
-   const [schedule]=await sql`SELECT payload FROM public.campus_schools WHERE school=${school}`;await audit('read-timetable',school+'/'+grade+'/'+className);return respond(res,200,{tables,schedule:schedule?.payload||null});
+   const [schedule]=await sql`SELECT payload FROM public.campus_schools WHERE school=${school}`;await audit('read-timetable',school+'/'+grade+'/'+className);return respond(res,200,{tables,schedule:schedule?.payload||null,school,grade,className});
   }
   const page=Math.floor(Math.max(0,Math.min(100000,Number(url.searchParams.get('page'))||0))),q=(url.searchParams.get('q')||'').trim().slice(0,100),search='%'+q+'%',section=url.searchParams.get('section')||'users';
   if(section==='spaces'){
@@ -39,13 +40,12 @@ export const createAdminHandler=({getIdentity=identity,getDb=db}={})=>async func
  }
  if(req.method!=='POST')return respond(res,405,{error:'Method not allowed'});
  const b=typeof req.body==='string'?JSON.parse(req.body):req.body;if(!b||JSON.stringify(b).length>10000)deny('요청을 확인하세요.');
- const ops=[],target=b.userId||b.id||null;
+ const destructive=['delete-room','delete-table'].includes(b.action),ops=[],target=destructive?b.id:(b.userId||b.id||null);
  if(b.action==='delete-user'){
   if(!uuid(b.userId)||b.confirm!=='DELETE')deny('삭제할 회원과 확인 문구를 확인하세요.');
   if(b.userId===user.id)deny('자신의 관리자 계정은 삭제할 수 없습니다.',403);
   const [existing]=await sql`SELECT id FROM neon_auth."user" WHERE id=${b.userId}`;if(!existing)deny('이미 탈퇴했거나 없는 회원입니다.',404);
   const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE user_id=${b.userId}`;if(admin)deny('관리자 계정은 삭제할 수 없습니다.',403);
-  // Preserve shared posts/audit evidence; remove private workspace and participation atomically.
   ops.push(
    sql`UPDATE public.campus_rooms SET status='closed',members=ARRAY[]::text[] WHERE class_id IN(SELECT id FROM public.campus_classes WHERE owner_id=${b.userId})`,
    sql`DELETE FROM public.campus_members WHERE class_id IN(SELECT id FROM public.campus_classes WHERE owner_id=${b.userId})`,
@@ -68,6 +68,17 @@ export const createAdminHandler=({getIdentity=identity,getDb=db}={})=>async func
   const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE user_id=${b.userId}`;if(admin)deny('소유자 관리자 권한은 변경할 수 없어요.',403);
   ops.push(sql`INSERT INTO public.campus_accounts(user_id,assigned_role,requested_role) VALUES(${b.userId},${b.role},'student') ON CONFLICT(user_id) DO UPDATE SET assigned_role=EXCLUDED.assigned_role,requested_role='student'`,sql`UPDATE public.campus_people SET teacher_status=${b.role==='teacher'?'approved':'none'} WHERE user_id=${b.userId}`,sql`UPDATE public.campus_members SET role=${b.role} WHERE user_id=${b.userId}`);
   if(b.role!=='teacher')ops.push(sql`UPDATE public.campus_rooms SET status='closed',members=ARRAY[]::text[] WHERE class_id IN(SELECT id FROM public.campus_classes WHERE owner_id=${b.userId})`,sql`DELETE FROM public.campus_members WHERE class_id IN(SELECT id FROM public.campus_classes WHERE owner_id=${b.userId})`,sql`UPDATE public.campus_classes SET closed=true WHERE owner_id=${b.userId}`);
+ }else if(b.action==='delete-room'){
+  if(!uuid(b.id)||b.userId!=='DELETE')deny('영구 삭제할 대화방과 확인값을 확인하세요.');
+  const [r]=await sql`SELECT id FROM public.campus_rooms WHERE id=${b.id}`;if(!r)deny('이미 삭제됐거나 없는 대화방입니다.',404);
+  ops.push(sql`DELETE FROM public.campus_reports WHERE room_id=${r.id}`,sql`DELETE FROM public.campus_exclusions WHERE scope_id=${r.id}`,sql`DELETE FROM public.campus_messages WHERE room_id=${r.id}`,sql`DELETE FROM public.campus_rooms WHERE id=${r.id}`);
+ }else if(b.action==='delete-table'){
+  if(b.userId!=='DELETE'||typeof b.id!=='string'||b.id.length>1000)deny('영구 삭제할 시간표와 확인값을 확인하세요.');
+  let key;try{key=JSON.parse(decodeURIComponent(b.id));}catch{deny('시간표 대상을 확인하세요.');}
+  if(!Array.isArray(key)||key.length!==4)deny('시간표 대상을 확인하세요.');
+  const school=name(key[0]),grade=name(key[1]),className=name(key[2]),week=key[3];if(week!=='*'&&!day(week))deny('시간표 적용 주차를 확인하세요.');
+  if(week==='*')ops.push(sql`DELETE FROM public.campus_school_tables WHERE school=${school} AND grade=${grade} AND class_name=${className}`,sql`DELETE FROM public.campus_tables WHERE class_id IN(SELECT id FROM public.campus_classes WHERE school=${school} AND grade=${grade} AND class_name=${className})`);
+  else ops.push(sql`DELETE FROM public.campus_school_tables WHERE school=${school} AND grade=${grade} AND class_name=${className} AND week=${week}::date`,sql`DELETE FROM public.campus_tables WHERE week=${week}::date AND class_id IN(SELECT id FROM public.campus_classes WHERE school=${school} AND grade=${grade} AND class_name=${className})`);
  }else if(['approve-group','close-room','edit-group','kick-room'].includes(b.action)){
   if(!uuid(b.id))deny('대화방을 확인하세요.');const [r]=await sql`SELECT id,kind,status,class_id,created_by FROM public.campus_rooms WHERE id=${b.id}`;if(!r)deny('대화방이 없습니다.',404);
   if(r.kind!=='group'&&b.action!=='kick-room')deny('그룹 관리에서만 가능한 작업입니다.');
