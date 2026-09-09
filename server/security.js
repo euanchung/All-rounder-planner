@@ -13,9 +13,9 @@ export async function identity(req){
   const sql=db();
   const [user]=await sql`SELECT id,email,name,"emailVerified" FROM neon_auth."user" WHERE id = ${payload.sub}`;
   if(!user)throw Object.assign(new Error('사용자 계정을 찾을 수 없습니다.'),{status:401});
-  // Administrator is provisioned once by the owner and bound to an immutable user ID.
+  // Administrators are provisioned by the owner and bound to immutable user IDs.
   // Never promote a newly registered account merely because its email matches.
-  const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE slot=1 AND user_id=${user.id}`;
+  const [admin]=await sql`SELECT user_id FROM public.radar_admin WHERE user_id=${user.id}`;
   const [account]=await sql`SELECT suspended FROM public.campus_accounts WHERE user_id=${user.id}`;
   if(account?.suspended&&!admin)throw Object.assign(new Error('이 계정은 이용이 정지되었습니다. 관리자에게 문의해 주세요.'),{status:403});
   return {id:user.id,email:user.email,name:user.name,emailVerified:user.emailVerified,role:admin?'admin':'member'};
