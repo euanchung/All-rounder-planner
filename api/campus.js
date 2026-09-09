@@ -1,3 +1,4 @@
+import {nameRooms} from '../server/room-names.js';
 import {notifyPeers} from '../server/push.js';
 import {randomUUID} from 'node:crypto';
 import {db} from '../server/db.js';
@@ -20,7 +21,7 @@ export default async function handler(req,res){try{
  const {person,member,role}=await roleContext(sql,user),site=await siteSettings(sql);
  const roomAccess=async id=>{if(!uuid(id))err('대화방을 확인해 주세요.');const [r]=await sql`SELECT * FROM public.campus_rooms WHERE id=${id}`;if(!r||(!roomMember(r,user.id)||(r.school&&r.school!==person?.school)))err('이 대화방의 참여자가 아닙니다.',403);return r;};
  if(req.method==='GET'){
-  if(url.searchParams.has('room')){const room=await roomAccess(url.searchParams.get('room'));const messages=await sql`SELECT m.id,m.sender_id,p.name,m.body,m.shared,m.created_at::text AS created_at FROM public.campus_messages m LEFT JOIN public.campus_people p ON p.user_id=m.sender_id WHERE m.room_id=${room.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=m.sender_id) OR (${!!room.auto_key} AND b.blocked_id=${user.id} AND b.user_id=m.sender_id)) ORDER BY m.created_at DESC LIMIT 100`;return respond(res,200,{room:{id:room.id,name:room.name,members:room.members,kind:room.kind,class_id:room.class_id},messages:messages.reverse()});}
+  if(url.searchParams.has('room')){const room=await roomAccess(url.searchParams.get('room'));const messages=await sql`SELECT m.id,m.sender_id,p.name,m.body,m.shared,m.created_at::text AS created_at FROM public.campus_messages m LEFT JOIN public.campus_people p ON p.user_id=m.sender_id WHERE m.room_id=${room.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=m.sender_id) OR (${!!room.auto_key} AND b.blocked_id=${user.id} AND b.user_id=m.sender_id)) ORDER BY m.created_at DESC LIMIT 100`;return respond(res,200,{room:{id:room.id,name:(await nameRooms(sql,[room],user.id))[0].name,members:room.members,kind:room.kind,class_id:room.class_id},messages:messages.reverse()});}
   if(url.searchParams.has('week')){const week=url.searchParams.get('week');if(!validDate(week))err('날짜를 확인하세요.');let table=null;if(member){const [r]=await sql`SELECT payload FROM public.campus_tables WHERE class_id=${member.id} AND week<=${week}::date ORDER BY week DESC LIMIT 1`;table=r?.payload||null;}return respond(res,200,{table});}
   const notices=member?await sql`SELECT n.id,n.title,n.body,n.created_at,p.name AS author FROM public.campus_notices n LEFT JOIN public.campus_people p ON p.user_id=n.author_id WHERE n.class_id=${member.id} ORDER BY n.created_at DESC LIMIT 40`:[];
   const people=person?.discoverable?await sql`SELECT p.user_id,p.name,p.subjects,p.school,p.grade,p.class_name,COALESCE(a.assigned_role,'student') AS role,m.class_id FROM public.campus_people p LEFT JOIN public.campus_accounts a ON a.user_id=p.user_id LEFT JOIN public.campus_members m ON m.user_id=p.user_id WHERE p.school=${person.school} AND p.discoverable=true AND COALESCE(a.suspended,false)=false AND p.user_id<>${user.id} AND NOT EXISTS(SELECT 1 FROM public.campus_blocks b WHERE (b.user_id=${user.id} AND b.blocked_id=p.user_id) OR (b.blocked_id=${user.id} AND b.user_id=p.user_id)) ORDER BY p.name LIMIT 300`:[];
@@ -29,7 +30,7 @@ export default async function handler(req,res){try{
   const applications=user.role==='admin'?await sql`SELECT user_id,name,school,subjects FROM public.campus_people WHERE teacher_status='pending' LIMIT 100`:[];
   const reports=user.role==='admin'?await sql`SELECT id,reason,created_at FROM public.campus_reports ORDER BY created_at DESC LIMIT 100`:[];
   const [account]=await sql`SELECT requested_role FROM public.campus_accounts WHERE user_id=${user.id}`;
-  return respond(res,200,{...await communityDirectory(sql,user,person,member),role,site,requestedRole:account?.requested_role||'student',person:person||null,member:member||null,notices,people,rooms,applications,reports});
+  return respond(res,200,{...await communityDirectory(sql,user,person,member),role,site,requestedRole:account?.requested_role||'student',person:person||null,member:member||null,notices,people,rooms:await nameRooms(sql,rooms,user.id),applications,reports});
  }
  const body=typeof req.body==='string'?JSON.parse(req.body):req.body;if(!body||JSON.stringify(body).length>40000)err('요청이 너무 큽니다.');const action=str(body.action,40);await limit(sql,user.id,action,['join','join-group'].includes(action)?5:30);
  const handled=await communityActions(sql,user,person,member,role,body);if(handled)return respond(res,200,handled);
